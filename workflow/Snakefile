@@ -1,125 +1,108 @@
 from pathlib import Path
 import os
+import sys
 import yaml
-from urllib.parse import urlparse
+import re
 import pandas as pd
-import shlex
-
-include: "rules/common.smk"
+from peppy import Project
+from snakemake.utils import validate, min_version
 
 ##### set minimum snakemake version #####
 min_version("8.20.1")
 
 module_name = "hic_pipeline"
-# load config and sample annotation sheets #####
-configfile: os.path.join("config","config.yaml")
-validate(config, schema="../schemas/20251017_hic_run2_config.yml")
 
-# Optional PEP loading to populate FASTQs and metadata
-pep_project = None
-if "project" in config and config["project"].get("pep_config", False):
-    from peppy import Project
+##### load config and sample annotation sheets #####
+configfile: os.path.join("config", "config.yaml")
 
-    pep_config_value = config["project"]["pep_config"]
-    pep_config_path = (
-        pep_config_value
-        if os.path.isabs(pep_config_value)
-        else os.path.join(workflow.basedir, pep_config_value)
-    )
-    pep_project = Project(pep_config_path)
+# Load PEP project to get sample metadata
+pep_config_value = config.get("pep_config", os.path.join("config", "hg38_test_pep.yaml"))
+pep_config_path = pep_config_value if os.path.isabs(pep_config_value) else os.path.join(workflow.basedir, pep_config_value)
 
-    # Merge PEP paths into config["paths"]
-    if "paths" in pep_project.config:
-        config.setdefault("paths", {}).update(pep_project.config["paths"])
+# Load PEP project
+pep_project = Project(pep_config_path)
 
-    def resolve_config_paths(cfg, paths_dict):
-        if isinstance(cfg, dict):
-            return {k: resolve_config_paths(v, paths_dict) for k, v in cfg.items()}
-        if isinstance(cfg, list):
-            return [resolve_config_paths(item, paths_dict) for item in cfg]
-        if isinstance(cfg, str) and "{" in cfg and "}" in cfg:
-            for key, value in paths_dict.items():
-                cfg = cfg.replace(f"{{{key}}}", value)
-            return cfg
+# Merge PEP path variables into config for easier access
+if "paths" in pep_project.config:
+    if "paths" not in config:
+        config["paths"] = {}
+    config["paths"].update(pep_project.config["paths"])
+
+# Helper function to resolve path placeholders in config
+def resolve_config_paths(cfg, paths_dict):
+    """Recursively resolve path placeholders in config dictionary"""
+    if isinstance(cfg, dict):
+        return {k: resolve_config_paths(v, paths_dict) for k, v in cfg.items()}
+    elif isinstance(cfg, list):
+        return [resolve_config_paths(item, paths_dict) for item in cfg]
+    elif isinstance(cfg, str) and "{" in cfg and "}" in cfg:
+        for key, value in paths_dict.items():
+            cfg = cfg.replace(f"{{{key}}}", value)
+        return cfg
+    else:
         return cfg
 
-    if "paths" in config:
-        config = resolve_config_paths(config, config["paths"])
+# Resolve path placeholders in config using PEP paths
+if "paths" in config:
+    config = resolve_config_paths(config, config["paths"])
 
-    # Load sample table and normalize columns
-    annot = pep_project.sample_table.copy()
-    if "sample_name" not in annot.columns or "run" not in annot.columns:
-        raise ValueError("PEP sample table must include columns 'sample_name' and 'run'.")
+# Get sample table from PEP
+annot = pep_project.sample_table.copy()
 
-    # Explode list-valued columns if any
-    list_cols = [col for col in annot.columns if annot[col].apply(lambda x: isinstance(x, list)).any()]
+# Explode list-valued columns if any
+list_cols = [col for col in annot.columns if annot[col].apply(lambda x: isinstance(x, list)).any()]
+if list_cols:
     for col in list_cols:
         annot = annot.explode(col, ignore_index=True)
 
-    # Deduplicate sample_name/run
-    annot = annot.drop_duplicates(subset=["sample_name", "run"], keep="first").reset_index(drop=True)
+# Remove duplicate (sample_name, run) pairs
+if 'sample_name' in annot.columns and 'run' in annot.columns:
+    annot = annot.drop_duplicates(subset=['sample_name', 'run'], keep='first').reset_index(drop=True)
 
-    # Ensure dtypes
-    annot["sample_name"] = annot["sample_name"].astype(str)
-    annot["run"] = pd.to_numeric(annot["run"], errors="raise").astype(str)
-    if "passqc" in annot.columns:
-        annot["passqc"] = pd.to_numeric(annot["passqc"], errors="coerce").fillna(0).astype(int)
+# Ensure required columns exist
+required_columns = {"sample_name", "run"}
+missing_required = required_columns.difference(annot.columns)
+if missing_required:
+    raise ValueError(f"Sample table missing required columns: {', '.join(sorted(missing_required))}.")
 
-    # Map columns to the structure expected by organize_fastqs
-    column_map = {}
-    if {"R1", "R2"}.issubset(annot.columns):
-        column_map["fastq1"] = "R1"
-        column_map["fastq2"] = "R2"
-    elif {"fastq1", "fastq2"}.issubset(annot.columns):
-        column_map["fastq1"] = "fastq1"
-        column_map["fastq2"] = "fastq2"
-    else:
-        raise ValueError("PEP sample table must include R1/R2 or fastq1/fastq2 columns.")
+# Ensure run column is string
+annot['run'] = annot['run'].astype(str)
 
-    df_fastqs = pd.DataFrame(
-        {
-            "sample_id": annot["sample_name"],
-            "lane": annot["run"],
-            "fastq1": annot[column_map["fastq1"]],
-            "fastq2": annot[column_map["fastq2"]],
-        }
-    )
-    # Carry optional metadata
-    if "ligation_site" in annot.columns:
-        df_fastqs["ligation_site"] = annot["ligation_site"]
-    if "skip_ligation" in annot.columns:
-        df_fastqs["skip_ligation"] = annot["skip_ligation"]
+# Ensure passqc column is integer if it exists
+if 'passqc' in annot.columns:
+    annot['passqc'] = pd.to_numeric(annot['passqc'], errors='coerce').fillna(0).astype(int)
 
-    # Point the workflow to use this table
-    config["input"]["load_csv"] = True
-    config["input"]["raw_reads_paths"] = df_fastqs
+# Create a unique identifier for each run: sample_name_run
+annot['sample_name'] = annot['sample_name'].astype(str)
+annot['sample_run'] = annot['sample_name'] + '_' + annot['run'].astype(str)
 
-# Load FASTQ samples from CSV if specified (config-driven)
-if config["input"].get("load_csv", False):
-    raw_input = config["input"].get("raw_reads_paths")
-    if isinstance(raw_input, pd.DataFrame):
-        fastq_df = raw_input
-    else:
-        csv_file = config["input"].get("fastq_csv", "samples.csv")
-        if os.path.exists(csv_file):
-            print(f"Loading FASTQ samples from CSV: {csv_file}")
-            fastq_df = pd.read_csv(csv_file)
-            config["input"]["raw_reads_paths"] = fastq_df
-        else:
-            raise FileNotFoundError(f"CSV file not found: {csv_file}. Please check the path in config.yml")
-else:
-    print("Using FASTQ samples from config.yml raw_reads_paths")
+# Validate sample table
+validate(annot, schema="../schemas/sample.schemas.yml")
+
+# Check for duplicate sample_run identifiers
+duplicates = annot[annot.duplicated(subset=['sample_run'], keep=False)]
+if not duplicates.empty:
+    sys.stderr.write("\nError: Duplicate (sample_name + run) pairs found in sample sheet!\n")
+    sys.stderr.write("The following rows are not unique:\n")
+    sys.stderr.write(str(duplicates[['sample_name', 'run', 'sample_run']]) + "\n\n")
+    sys.exit(1)
+
+# Set sample_run as index
+annot = annot.set_index('sample_run')
+
+# Get unique sample names (for downstream analysis)
+samples = annot.reset_index().drop_duplicates(subset='sample_name', keep='first').set_index("sample_name").to_dict(orient="index")
+
+# Include common functions
+include: "rules/common.smk"
 
 localrules:
     merge_stats_libraries_into_groups,
 
-
-downloaded_fastqs_folder = config["output"]["dirs"]["downloaded_fastqs"]
+# Set up output directories
+result_path = config.get("output_base_dir", "results")
 processed_fastqs_folder = config["output"]["dirs"]["processed_fastqs"]
-mapped_parsed_sorted_chunks_folder = config["output"]["dirs"][
-    "mapped_parsed_sorted_chunks"
-]
-
+mapped_parsed_sorted_chunks_folder = config["output"]["dirs"]["mapped_parsed_sorted_chunks"]
 pairs_runs_folder = config["output"]["dirs"]["pairs_runs"]
 pairs_library_folder = config["output"]["dirs"]["pairs_library"]
 coolers_library_folder = config["output"]["dirs"]["coolers_library"]
@@ -127,37 +110,42 @@ coolers_library_group_folder = config["output"]["dirs"]["coolers_library_group"]
 stats_library_group_folder = config["output"]["dirs"]["stats_library_group"]
 downstream_dist_folder = config["output"]["dirs"]["downstream_dist_folder"]
 downstream_loops_folder = config["output"]["dirs"]["downstream_loops_folder"]
-
-
 multiqc_folder = config["output"]["dirs"]["multiqc"]
 
+# Genome configuration
 assembly = config["input"]["genome"]["assembly_name"]
 genome_path = config["input"]["genome"]["bwa_index_wildcard_path"].rstrip("*")
 bowtie_index_path = config["input"]["genome"]["bowtie_index_path"].rstrip("*")
-# custom_genome_folder = Path(config["genome"]["custom_genome_path"]).parent
 chromsizes_path = config["input"]["genome"]["chrom_sizes_path"]
 
-
-LIBRARY_RUN_FASTQS = organize_fastqs(config)
-
-# Store sample metadata (e.g., ligation_site) if loading from CSV
+# Build LIBRARY_RUN_FASTQS from annot
+LIBRARY_RUN_FASTQS = {}
 SAMPLE_METADATA = {}
-if config["input"].get("load_csv", False):
-    csv_file = config["input"].get("fastq_csv", "samples.csv")
-    if os.path.exists(csv_file):
-        fastq_df = pd.read_csv(csv_file)
-        # Store metadata for each library/run combination
-        for _, row in fastq_df.iterrows():
-            library = str(row['sample_id'])
-            run = str(row['lane'])
-            if library not in SAMPLE_METADATA:
-                SAMPLE_METADATA[library] = {}
-            SAMPLE_METADATA[library][run] = {}
-            # Store ligation_site if available
-            if 'ligation_site' in row and pd.notna(row['ligation_site']):
-                SAMPLE_METADATA[library][run]['ligation_site'] = str(row['ligation_site'])
-            if 'skip_ligation' in row and pd.notna(row['skip_ligation']):
-                SAMPLE_METADATA[library][run]['skip_ligation'] = bool(row['skip_ligation'])
+
+for sample_run_id, row in annot.iterrows():
+    library = row['sample_name']
+    run = row['run']
+    
+    # Get fastq paths (support both R1/R2 and fastq1/fastq2)
+    if 'R1' in row and 'R2' in row:
+        fastq1, fastq2 = row['R1'], row['R2']
+    elif 'fastq1' in row and 'fastq2' in row:
+        fastq1, fastq2 = row['fastq1'], row['fastq2']
+    else:
+        raise ValueError(f"Sample {sample_run_id} missing R1/R2 or fastq1/fastq2 columns")
+    
+    if library not in LIBRARY_RUN_FASTQS:
+        LIBRARY_RUN_FASTQS[library] = {}
+        SAMPLE_METADATA[library] = {}
+    
+    LIBRARY_RUN_FASTQS[library][run] = [str(fastq1), str(fastq2)]
+    
+    # Store metadata
+    SAMPLE_METADATA[library][run] = {}
+    if 'ligation_site' in row and pd.notna(row['ligation_site']):
+        SAMPLE_METADATA[library][run]['ligation_site'] = str(row['ligation_site'])
+    if 'skip_ligation' in row and pd.notna(row['skip_ligation']):
+        SAMPLE_METADATA[library][run]['skip_ligation'] = bool(row['skip_ligation'])
 
 # Automatically create library_groups if all_group is True
 if config["input"].get("all_group", False):
@@ -166,29 +154,21 @@ if config["input"].get("all_group", False):
         config["input"]["library_groups"] = {}
     config["input"]["library_groups"]["all"] = all_libraries
     print(f"Auto-generated 'all' group with {len(all_libraries)} libraries: {all_libraries}")
+
 runs = [list(LIBRARY_RUN_FASTQS[lib].keys()) for lib in LIBRARY_RUN_FASTQS.keys()]
 runs = [item for sublist in runs for item in sublist]
 
-# With chunking removed, treat each run as a single logical chunk named "raw"
+# No chunking - treat each run as a single chunk named "raw"
 CHUNK_IDS = {
     library: {run: ["raw"] for run in LIBRARY_RUN_FASTQS[library]}
     for library in LIBRARY_RUN_FASTQS
 }
-all_chunk_ids = sorted(
-    {cid for lib_dict in CHUNK_IDS.values() for run_dict in lib_dict.values() for cid in run_dict}
-)
+all_chunk_ids = ["raw"]
 
 def get_raw_fastqs(wc):
-    """Return raw R1/R2 FASTQ paths for a given library/run, using downloaded files if needed."""
+    """Return raw R1/R2 FASTQ paths for a given library/run."""
     fastqs = LIBRARY_RUN_FASTQS[wc.library][wc.run]
-    return [
-        f"{downloaded_fastqs_folder}/{wc.library}.{wc.run}.1.fastq.gz"
-        if needs_downloading(fastqs, 0)
-        else fastqs[0],
-        f"{downloaded_fastqs_folder}/{wc.library}.{wc.run}.2.fastq.gz"
-        if needs_downloading(fastqs, 1)
-        else fastqs[1],
-    ]
+    return fastqs
 
 min_resolution = min(config["bin"]["resolutions"])
 
@@ -237,7 +217,6 @@ if config["bin"].get("make_hic", False):
 library_group_coolers = []
 library_group_hic = []
 library_group_stats = []
-# library_group_scaling_pairs = []
 if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0:
     library_group_coolers = expand(
         f"{coolers_library_group_folder}/{{library_group}}.{assembly}.{{filter_name}}.{min_resolution}.mcool",
@@ -254,10 +233,6 @@ if "library_groups" in config["input"] and len(config["input"]["library_groups"]
         f"{stats_library_group_folder}/{{library_group}}.{assembly}.stats",
         library_group=config["input"]["library_groups"].keys(),
     )
-    # library_group_scaling_pairs = expand(
-    #     f"{stats_library_group_folder}/{{library_group}}.{assembly}.scaling.tsv",
-    #     library_group=config["input"]["library_groups"].keys(),
-    # )
 
 assemble_mapstats = []
 assemble_pairstats = []
@@ -268,57 +243,49 @@ for library in LIBRARY_RUN_FASTQS:
     assemble_pairstats.append(
         f"{mapped_parsed_sorted_chunks_folder}/{library}/assemble.pairstat"
     )
+
 multiqc = [f"{multiqc_folder}/multiqc_report.html"]
 combined_dedup_stats = f"{pairs_library_folder}/combined_dedup_stats_summary.tsv"
 combined_mapstats = f"{pairs_library_folder}/combined_mapstats_summary.tsv"
 combined_pairstats = f"{pairs_library_folder}/combined_pairstats_summary.tsv"
 combined_RSstats = f"{pairs_library_folder}/combined_RSstats_summary.tsv"
 combined_hicproPairstats = f"{pairs_library_folder}/combined_hicpro_pairstats_summary.tsv"
-combined_stats = [combined_dedup_stats, combined_mapstats, combined_pairstats,combined_RSstats,combined_hicproPairstats]
-
+combined_stats = [combined_dedup_stats, combined_mapstats, combined_pairstats, combined_RSstats, combined_hicproPairstats]
 
 allvalidPair = []
-# allvalidpair
 for library in LIBRARY_RUN_FASTQS:
-    fastqc += expand(
-        f"{pairs_library_folder}/{library}.allValidPairs"
-    )
+    allvalidPair.append(f"{pairs_library_folder}/{library}.allValidPairs")
 
-# Some sanity checks
-# Phasing
+# Some sanity checks - Phasing
 if config.get('phase', {}).get('do_phase', False):
-    if config['map']['mapper']=='chromap':
+    if config['map']['mapper'] == 'chromap':
         raise ValueError(
             "Phasing is not possible with chromap, please use bwa-mem, bwa-mem2 or bwa-meme."
         )
     parse_options = argstring_to_dict(config['parse'].get('parsing_options', ''))
     if '--min-mapq' not in parse_options or parse_options['--min-mapq'] != '0':
         raise ValueError(
-            "Plase set '--min-mapq to 0' in the parsing options to use phasing."
+            "Please set '--min-mapq to 0' in the parsing options to use phasing."
         )
     if '--add-columns' not in parse_options:
         raise ValueError(
             "Please set the appropriate --add-columns argument in the parsing options to use phasing."
         )
-    elif config['phase']['tag_mode']=='XA' and not set(['XA', 'NM', 'AS', 'XS', 'mapq']).issubset(set(parse_options['--add-columns'].split(','))):
+    elif config['phase']['tag_mode'] == 'XA' and not set(['XA', 'NM', 'AS', 'XS', 'mapq']).issubset(set(parse_options['--add-columns'].split(','))):
         raise ValueError(
             "Please set '--add-columns XA,NM,AS,XS,mapq' in the parsing options to use phasing with XA tag mode."
         )
-    elif config['phase']['tag_mode']=='XB' and not set(['XB', 'NM', 'AS', 'XS', 'mapq']).issubset(set(parse_options['--add-columns'].split(','))):
+    elif config['phase']['tag_mode'] == 'XB' and not set(['XB', 'NM', 'AS', 'XS', 'mapq']).issubset(set(parse_options['--add-columns'].split(','))):
         raise ValueError(
             "Please set '--add-columns XB,NM,AS,XS,mapq' in the parsing options to use phasing with XB tag mode."
         )
-    # simpler check, should be enough and in case of multiple extra col pairs, where the dict would only record the last one...
-    dedup_options = config["dedup"].get("dedup_options", "") 
+    dedup_options = config["dedup"].get("dedup_options", "")
     if '--extra-col-pair phase1 phase1' not in dedup_options or '--extra-col-pair phase2 phase2' not in dedup_options:
         raise ValueError(
             "Please add '--extra-col-pair phase1 phase2' in the dedup options to use phasing."
         )
 
-
 # List of all required outputs of the workflow
-# Note that pairs are not listed, since they are needed to produce coolers, so they are
-# implicitly required
 rule default:
     input:
         library_group_coolers,
@@ -334,9 +301,7 @@ rule default:
         library_downstream_stat,
         library_mustache_loops
 
-
-# Global constraints on the wildcards to be used in the workflow - ensures correct
-# parsing of all file names into wildcards
+# Global constraints on the wildcards
 wildcard_constraints:
     library=f"({'|'.join([re.escape(lib) for lib in LIBRARY_RUN_FASTQS.keys()])})",
     library_group=(
@@ -348,7 +313,6 @@ wildcard_constraints:
     chunk_id=f"({'|'.join(all_chunk_ids)})",
     resolution=f"({'|'.join([str(res) for res in config['bin']['resolutions']])})",
 
-
 # Depending on the mapper, the index files will be different
 if config["map"]["mapper"] == "bwa-mem":
     idx = multiext(
@@ -359,7 +323,6 @@ if config["map"]["mapper"] == "bwa-mem":
         ".pac",
         ".sa",
     )
-
 elif config["map"]["mapper"] == "bwa-mem2":
     idx = multiext(
         genome_path,
@@ -379,7 +342,6 @@ elif config["map"]["mapper"] == "bowtie2":
         ".rev.1.bt2",
         ".rev.2.bt2",
     )
-
 else:  # bwa-meme
     idx = multiext(
         genome_path,
@@ -395,15 +357,10 @@ else:  # bwa-meme
     )
 
 if config["map"]["mapper"] == "chromap":
-
     ruleorder: map_chunks_chromap > parse_sort_chunks
-
 elif config["map"]["mapper"] == "bowtie2":
-    
-#    ruleorder: pair_rescue_reads > map_chunks_bwa_pipe > map_chunks_bwa
     pass
 else:
-
     ruleorder: parse_sort_chunks > map_chunks_chromap
 
 include: "rules/pairtools.smk"
@@ -414,23 +371,11 @@ include: "rules/hicpro_style.smk"
 include: "rules/cooltools.smk"
 include: "rules/downstream.smk"
 
-# rule make_chromsizes:
-#     input:
-#         genome_faidx=f"{config['input']['genome']['genome_fasta_path']}.fai",
-#     output:
-#         chromsizes=chromsizes_path,
-#     shell:
-#         "cut -f1,2 {input.genome_faidx} > {output.chromsizes}"
-
 # If we keep bams, simply store the output in the folder, otherwise pipe it to pairtools parse
-# Perhaps something with tee might be faster, had trouble getting it to work
 if config["map"]["mapper"] in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
     if config["parse"]["keep_unparsed_bams"]:
-
         ruleorder: map_chunks_bwa > map_chunks_bwa_pipe
-
     else:
-
         ruleorder: map_chunks_bwa_pipe > map_chunks_bwa
 
     use rule map_chunks_bwa as map_chunks_bwa_pipe with:
@@ -438,20 +383,6 @@ if config["map"]["mapper"] in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
             pipe(
                 f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.bam"
             ),
-
-
-
-# use rule scaling_pairs_library as scaling_pairs_library_group with:
-#     input:
-#         pairs=f"{stats_library_group_folder}/{{library_group}}.{assembly}.pairs.gz",
-#         chromsizes=chromsizes_path,
-#     output:
-#         scaling=f"{stats_library_group_folder}/{{library_group}}.{assembly}.scaling.tsv",
-#     log:
-#         "logs/scaling_pairs_library_group/{library_group}.log",
-#     benchmark:
-#         "benchmarks/scaling_pairs_library_group/{library_group}.tsv"
-
 
 rule merge_stats_libraries_into_groups:
     input:

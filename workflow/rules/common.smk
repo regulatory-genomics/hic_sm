@@ -1,5 +1,5 @@
 # Copied from https://github.com/mirnylab/distiller-sm/blob/master/_distiller_common.py
-import os, pathlib
+import os
 import numpy as np
 import pandas as pd
 import shlex
@@ -13,123 +13,133 @@ def argstring_to_dict(argstring):
         
     Returns:
         dict: A dictionary with argument names as keys and their values.
-        
-    Note:
-        - Arguments that start with '-' are considered keys.
-        - If an argument has no value, it is set to True.
-        - Values can be separated by spaces and will be joined into a single string.
-        - If the final argument is a value without a preceding key, it will be included as a value for the last key (issue in case of specified input as last argument).
     """
     args = shlex.split(argstring)
     keys = np.where([arg.startswith('-') for arg in args])[0]
     vals = np.where([not arg.startswith('-') for arg in args])[0]
     args_arrs = [arr for arr in np.split(args, keys) if arr.size > 0]
-    argdict = {str(arr[0]): (' '.join(arr[1:]) if arr.size > 1 else True) for arr in args_arrs }
+    argdict = {str(arr[0]): (' '.join(arr[1:]) if arr.size > 1 else True) for arr in args_arrs}
     return argdict
 
 
-def parse_fastq_dataframe(df):
-    """
-    Convert a pandas DataFrame to library_run_fastqs dictionary structure.
-    
-    Args:
-        df (pd.DataFrame): DataFrame with columns: sample_id, lane, fastq1, fastq2
-        
-    Returns:
-        dict: A nested dictionary with structure {library: {run: [fastq1, fastq2]}}
-    """
-    # Accept either fastq1/fastq2 or R1/R2 column naming
-    if {"fastq1", "fastq2"}.issubset(df.columns):
-        fastq1_col, fastq2_col = "fastq1", "fastq2"
-    elif {"R1", "R2"}.issubset(df.columns):
-        fastq1_col, fastq2_col = "R1", "R2"
+def needs_downloading(fastq_files, side):
+    """Check if a FASTQ file needs to be downloaded."""
+    if len(fastq_files) == 1 and fastq_files[0].startswith("sra:"):
+        return True
+    elif (
+        fastq_files[side].startswith("sra:")
+        or fastq_files[side].startswith("http://")
+        or fastq_files[side].startswith("ftp://")
+    ):
+        return True
     else:
-        raise Exception(
-            "DataFrame is missing required FASTQ columns. Expected either "
-            "{fastq1, fastq2} or {R1, R2}."
-        )
-
-    required_columns = {"sample_id", "lane", fastq1_col, fastq2_col}
-    if not required_columns.issubset(df.columns):
-        missing = required_columns - set(df.columns)
-        raise Exception(
-            f"DataFrame is missing required columns: {missing}. "
-            f"Required columns are: {required_columns}"
-        )
-    
-    library_run_fastqs = {}
-    
-    # Iterate through DataFrame rows and build the nested dictionary
-    for _, row in df.iterrows():
-        library = str(row['sample_id'])
-        run = str(row['lane'])
-        fastq1 = str(row[fastq1_col])
-        fastq2 = str(row[fastq2_col])
-        
-        # Initialize nested dictionaries if they don't exist
-        if library not in library_run_fastqs:
-            library_run_fastqs[library] = {}
-        if run not in library_run_fastqs[library]:
-            library_run_fastqs[library][run] = []
-        
-        # Add fastq files
-        library_run_fastqs[library][run] = [fastq1, fastq2]
-    
-    return library_run_fastqs
+        return False
 
 
-def organize_fastqs(config):
-    load_csv = config["input"]["load_csv"]
-    if load_csv:
-        fastq_csv = config["input"]["fastq_csv"]
-        raw_reads_input = pd.read_csv(fastq_csv)
+# Helper functions for PEP-based workflows
+def get_runs_for_sample(sample_name):
+    """Get all runs for a given sample name"""
+    if 'annot' not in globals():
+        return []
+    sample_runs = annot[annot.reset_index()['sample_name'] == sample_name].index.tolist()
+    return sample_runs if len(sample_runs) > 0 else []
+
+
+def get_samples_passing_qc():
+    """Get sample names that have at least one run passing QC (passqc=1).
+    If passqc column doesn't exist, returns all samples (default: all pass QC)."""
+    if 'annot' not in globals():
+        return []
+    if 'samples' not in globals():
+        return []
+    if 'passqc' not in annot.columns:
+        return list(samples.keys())
+    
+    passing_samples = set()
+    for sample_name in samples.keys():
+        sample_runs = get_runs_for_sample(sample_name)
+        for sample_run in sample_runs:
+            passqc_value = annot.loc[sample_run, 'passqc']
+            if passqc_value == 1 or str(passqc_value).strip() == '1':
+                passing_samples.add(sample_name)
+                break
+    
+    return list(passing_samples) if passing_samples else []
+
+
+def get_units_fastqs(wildcards):
+    """Get fastq files for a sample_run from PEP annotation table"""
+    if 'annot' not in globals():
+        raise ValueError("annot table not loaded. PEP configuration required.")
+    
+    u = annot.loc[wildcards.sample_run]
+    
+    # Support both R1/R2 and fastq1/fastq2 naming
+    if 'R1' in u and 'R2' in u:
+        fq1 = u["R1"]
+        fq2 = u["R2"]
+    elif 'fastq1' in u and 'fastq2' in u:
+        fq1 = u["fastq1"]
+        fq2 = u["fastq2"]
     else:
-        raw_reads_input = config["input"]["raw_reads_paths"]
+        raise ValueError(f"Sample {wildcards.sample_run} missing R1/R2 or fastq1/fastq2 columns")
     
-    # Case 2: pandas DataFrame
-    elif isinstance(raw_reads_input, pd.DataFrame):
-        library_run_fastqs = parse_fastq_dataframe(raw_reads_input)
+    def expand_pep_path(path):
+        """Expand PEP derive modifier paths like raw_data|filename"""
+        if pd.isna(path) or not isinstance(path, str):
+            return path
+        if "|" in path:
+            prefix, filename = path.split("|", 1)
+            if prefix == "raw_data" and "paths" in config and "data_dir" in config["paths"]:
+                return os.path.join(config["paths"]["data_dir"], filename)
+            try:
+                if 'pep_project' in globals() and 'sample_modifiers' in pep_project.config:
+                    sources = pep_project.config.get('sample_modifiers', {}).get('derive', {}).get('sources', {})
+                    if prefix in sources:
+                        return os.path.join(sources[prefix], filename)
+            except:
+                pass
+        if path and not os.path.isabs(path):
+            return os.path.abspath(path)
+        return path
     
-    # Case 3: Dictionary structure
-    elif isinstance(raw_reads_input, dict):
-        if not check_fastq_dict_structure(raw_reads_input):
-            raise Exception(
-                "An unknown format for library_fastqs! Please provide it as either "
-                'a path to the folder structured as "library/run/fastqs", '
-                "a dictionary specifying the project structure, or "
-                "a pandas DataFrame with columns: sample_id, lane, fastq1, fastq2."
-            )
-        library_run_fastqs = raw_reads_input
+    fq1 = expand_pep_path(fq1)
+    fq2 = expand_pep_path(fq2)
     
-    else:
-        raise Exception(
-            "An unknown format for library_fastqs! Please provide it as either "
-            "a path to the folder with the structure library/run/fastqs, "
-            "a dictionary specifying the project structure, or "
-            "a pandas DataFrame with columns: sample_id, lane, fastq1, fastq2."
-        )
-
-    return library_run_fastqs
+    if pd.isna(fq2):
+        fq2 = None
+    
+    return [fq1, fq2]
 
 
-
-def get_units_fastqs(w):
-    """
-    Resolve input FASTQs for a given sample_run wildcard.
-    Expects sample_run to be formatted as '{library}.{run}' if library/run are not present.
-    """
-    if hasattr(w, "library") and hasattr(w, "run"):
-        return get_raw_fastqs(w)
-    if hasattr(w, "sample_run"):
-        library, run = w.sample_run.split(".")
-        fastqs = LIBRARY_RUN_FASTQS[library][run]
-        return [
-            f"{downloaded_fastqs_folder}/{library}.{run}.1.fastq.gz"
-            if needs_downloading(fastqs, 0)
-            else fastqs[0],
-            f"{downloaded_fastqs_folder}/{library}.{run}.2.fastq.gz"
-            if needs_downloading(fastqs, 1)
-            else fastqs[1],
-        ]
-    raise ValueError("sample_run wildcard is required to resolve FASTQs.")
-
+def get_all_fastqs_for_sample(sample_name):
+    """Get all R1 and R2 fastq files for a sample (all runs combined)"""
+    if 'annot' not in globals():
+        return [], []
+    
+    sample_runs = get_runs_for_sample(sample_name)
+    r1_files = []
+    r2_files = []
+    for sr in sample_runs:
+        u = annot.loc[sr]
+        if 'R1' in u:
+            r1 = u["R1"]
+        elif 'fastq1' in u:
+            r1 = u["fastq1"]
+        else:
+            continue
+        
+        if not pd.isna(r1):
+            r1_files.append(str(r1))
+        
+        if 'R2' in u:
+            r2 = u["R2"]
+        elif 'fastq2' in u:
+            r2 = u["fastq2"]
+        else:
+            continue
+        
+        if not pd.isna(r2):
+            r2_files.append(str(r2))
+    
+    return r1_files, r2_files
