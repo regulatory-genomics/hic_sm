@@ -22,7 +22,7 @@ def load_data(clr_path, genome, n_proc):
     """
     print(f"Loading cooler: {clr_path}")
     try:
-         clr = cooler.Cooler(clr_path)
+        clr = cooler.Cooler(clr_path)
     except Exception as e:
         print(f"Error loading cooler file: {e}", file=sys.stderr)
         return None, None, None

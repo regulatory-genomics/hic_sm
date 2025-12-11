@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import yaml
 from urllib.parse import urlparse
 import pandas as pd
@@ -6,19 +7,106 @@ import shlex
 
 include: "rules/common.smk"
 
-#configfile: "config/test_config.yml"
-configfile: "20251017_hic_run2_config.yml"
+##### set minimum snakemake version #####
+min_version("8.20.1")
 
-# Load FASTQ samples from CSV if specified
-import os
-if config["input"].get("load_csv", False):
-    csv_file = config["input"].get("fastq_csv", "samples.csv")
-    if os.path.exists(csv_file):
-        print(f"Loading FASTQ samples from CSV: {csv_file}")
-        fastq_df = pd.read_csv(csv_file)
-        config["input"]["raw_reads_paths"] = fastq_df
+module_name = "hic_pipeline"
+# load config and sample annotation sheets #####
+configfile: os.path.join("config","config.yaml")
+validate(config, schema="../schemas/20251017_hic_run2_config.yml")
+
+# Optional PEP loading to populate FASTQs and metadata
+pep_project = None
+if "project" in config and config["project"].get("pep_config", False):
+    from peppy import Project
+
+    pep_config_value = config["project"]["pep_config"]
+    pep_config_path = (
+        pep_config_value
+        if os.path.isabs(pep_config_value)
+        else os.path.join(workflow.basedir, pep_config_value)
+    )
+    pep_project = Project(pep_config_path)
+
+    # Merge PEP paths into config["paths"]
+    if "paths" in pep_project.config:
+        config.setdefault("paths", {}).update(pep_project.config["paths"])
+
+    def resolve_config_paths(cfg, paths_dict):
+        if isinstance(cfg, dict):
+            return {k: resolve_config_paths(v, paths_dict) for k, v in cfg.items()}
+        if isinstance(cfg, list):
+            return [resolve_config_paths(item, paths_dict) for item in cfg]
+        if isinstance(cfg, str) and "{" in cfg and "}" in cfg:
+            for key, value in paths_dict.items():
+                cfg = cfg.replace(f"{{{key}}}", value)
+            return cfg
+        return cfg
+
+    if "paths" in config:
+        config = resolve_config_paths(config, config["paths"])
+
+    # Load sample table and normalize columns
+    annot = pep_project.sample_table.copy()
+    if "sample_name" not in annot.columns or "run" not in annot.columns:
+        raise ValueError("PEP sample table must include columns 'sample_name' and 'run'.")
+
+    # Explode list-valued columns if any
+    list_cols = [col for col in annot.columns if annot[col].apply(lambda x: isinstance(x, list)).any()]
+    for col in list_cols:
+        annot = annot.explode(col, ignore_index=True)
+
+    # Deduplicate sample_name/run
+    annot = annot.drop_duplicates(subset=["sample_name", "run"], keep="first").reset_index(drop=True)
+
+    # Ensure dtypes
+    annot["sample_name"] = annot["sample_name"].astype(str)
+    annot["run"] = pd.to_numeric(annot["run"], errors="raise").astype(str)
+    if "passqc" in annot.columns:
+        annot["passqc"] = pd.to_numeric(annot["passqc"], errors="coerce").fillna(0).astype(int)
+
+    # Map columns to the structure expected by organize_fastqs
+    column_map = {}
+    if {"R1", "R2"}.issubset(annot.columns):
+        column_map["fastq1"] = "R1"
+        column_map["fastq2"] = "R2"
+    elif {"fastq1", "fastq2"}.issubset(annot.columns):
+        column_map["fastq1"] = "fastq1"
+        column_map["fastq2"] = "fastq2"
     else:
-        raise FileNotFoundError(f"CSV file not found: {csv_file}. Please check the path in config.yml")
+        raise ValueError("PEP sample table must include R1/R2 or fastq1/fastq2 columns.")
+
+    df_fastqs = pd.DataFrame(
+        {
+            "sample_id": annot["sample_name"],
+            "lane": annot["run"],
+            "fastq1": annot[column_map["fastq1"]],
+            "fastq2": annot[column_map["fastq2"]],
+        }
+    )
+    # Carry optional metadata
+    if "ligation_site" in annot.columns:
+        df_fastqs["ligation_site"] = annot["ligation_site"]
+    if "skip_ligation" in annot.columns:
+        df_fastqs["skip_ligation"] = annot["skip_ligation"]
+
+    # Point the workflow to use this table
+    config["input"]["load_csv"] = True
+    config["input"]["raw_reads_paths"] = df_fastqs
+
+# Load FASTQ samples from CSV if specified (config-driven)
+if config["input"].get("load_csv", False):
+    raw_input = config["input"].get("raw_reads_paths")
+    if isinstance(raw_input, pd.DataFrame):
+        fastq_df = raw_input
+    else:
+        csv_file = config["input"].get("fastq_csv", "samples.csv")
+        if os.path.exists(csv_file):
+            print(f"Loading FASTQ samples from CSV: {csv_file}")
+            fastq_df = pd.read_csv(csv_file)
+            config["input"]["raw_reads_paths"] = fastq_df
+        else:
+            raise FileNotFoundError(f"CSV file not found: {csv_file}. Please check the path in config.yml")
 else:
     print("Using FASTQ samples from config.yml raw_reads_paths")
 
@@ -28,7 +116,6 @@ localrules:
 
 downloaded_fastqs_folder = config["output"]["dirs"]["downloaded_fastqs"]
 processed_fastqs_folder = config["output"]["dirs"]["processed_fastqs"]
-fastqc_folder = config["output"]["dirs"]["fastqc"]
 mapped_parsed_sorted_chunks_folder = config["output"]["dirs"][
     "mapped_parsed_sorted_chunks"
 ]
@@ -82,17 +169,28 @@ if config["input"].get("all_group", False):
 runs = [list(LIBRARY_RUN_FASTQS[lib].keys()) for lib in LIBRARY_RUN_FASTQS.keys()]
 runs = [item for sublist in runs for item in sublist]
 
-min_resolution = min(config["bin"]["resolutions"])
+# With chunking removed, treat each run as a single logical chunk named "raw"
+CHUNK_IDS = {
+    library: {run: ["raw"] for run in LIBRARY_RUN_FASTQS[library]}
+    for library in LIBRARY_RUN_FASTQS
+}
+all_chunk_ids = sorted(
+    {cid for lib_dict in CHUNK_IDS.values() for run_dict in lib_dict.values() for cid in run_dict}
+)
 
-# Setting up FASTQC outputs if required
-fastqc = []
-if config.get("do_fastqc", False):
-    for library in LIBRARY_RUN_FASTQS:
-        fastqc += expand(
-            f"{fastqc_folder}/{library}.{{run}}.{{side}}_fastqc.zip",
-            run=LIBRARY_RUN_FASTQS[library].keys(),
-            side=[1, 2],
-        )
+def get_raw_fastqs(wc):
+    """Return raw R1/R2 FASTQ paths for a given library/run, using downloaded files if needed."""
+    fastqs = LIBRARY_RUN_FASTQS[wc.library][wc.run]
+    return [
+        f"{downloaded_fastqs_folder}/{wc.library}.{wc.run}.1.fastq.gz"
+        if needs_downloading(fastqs, 0)
+        else fastqs[0],
+        f"{downloaded_fastqs_folder}/{wc.library}.{wc.run}.2.fastq.gz"
+        if needs_downloading(fastqs, 1)
+        else fastqs[1],
+    ]
+
+min_resolution = min(config["bin"]["resolutions"])
 
 # Setting up scaling from pairs outputs if required
 library_scaling_pairs = []
@@ -178,12 +276,6 @@ combined_RSstats = f"{pairs_library_folder}/combined_RSstats_summary.tsv"
 combined_hicproPairstats = f"{pairs_library_folder}/combined_hicpro_pairstats_summary.tsv"
 combined_stats = [combined_dedup_stats, combined_mapstats, combined_pairstats,combined_RSstats,combined_hicproPairstats]
 
-# Setting up resgen upload outputs (empty files indicating that the upload has been done)
-resgen_uploads = (
-    [f"{clr}_uploaded" for clr in library_coolers + library_group_coolers]
-    if config["resgen"]["upload"]
-    else []
-)
 
 allvalidPair = []
 # allvalidpair
@@ -235,10 +327,7 @@ rule default:
         library_coolers,
         library_hic,
         library_scaling_pairs,
-        # library_group_scaling_pairs,
-        fastqc,
         multiqc,
-        resgen_uploads,
         combined_stats,
         assemble_mapstats,
         allvalidPair,
@@ -256,7 +345,7 @@ wildcard_constraints:
         else ""
     ),
     run=f"({'|'.join([re.escape(run) for run in runs])})",
-    chunk_id="[0-9]+",
+    chunk_id=f"({'|'.join(all_chunk_ids)})",
     resolution=f"({'|'.join([str(res) for res in config['bin']['resolutions']])})",
 
 
@@ -317,8 +406,6 @@ else:
 
     ruleorder: parse_sort_chunks > map_chunks_chromap
 
-
-include: "rules/resgen.smk"
 include: "rules/pairtools.smk"
 include: "rules/report.smk"
 include: "rules/preprocess.smk"
@@ -326,39 +413,6 @@ include: "rules/align.smk"
 include: "rules/hicpro_style.smk"
 include: "rules/cooltools.smk"
 include: "rules/downstream.smk"
-
-checkpoint chunk_fastq:
-    input:
-        fastq1=lambda wildcards: (
-            f"{downloaded_fastqs_folder}/{wildcards.library}.{wildcards.run}.1.fastq.gz"
-            if needs_downloading(
-                LIBRARY_RUN_FASTQS[wildcards.library][wildcards.run], 0
-            )
-            else LIBRARY_RUN_FASTQS[wildcards.library][wildcards.run][0]
-        ),
-        fastq2=lambda wildcards: (
-            f"{downloaded_fastqs_folder}/{wildcards.library}.{wildcards.run}.2.fastq.gz"
-            if needs_downloading(
-                LIBRARY_RUN_FASTQS[wildcards.library][wildcards.run], 1
-            )
-            else LIBRARY_RUN_FASTQS[wildcards.library][wildcards.run][1]
-        ),
-    params:
-        chunksize=lambda wildcards: config["map"]["chunksize"] * 4,  #*4 because we split by lines, not by reads
-    threads: lambda wildcards: 4 if config["map"]["chunksize"] > 0 else 1
-    conda:
-        lambda wildcards: (
-            "envs/download_fastqs.yml" if config["map"]["chunksize"] > 0 else None
-        )
-    output:
-        #touch(f"{processed_fastqs_folder}/{{library}}/{{run}}/.chunks_ready")
-        directory(f"{processed_fastqs_folder}/{{library}}/{{run}}"),
-    log:
-        "logs/chunk_runs/{library}.{run}.tsv",
-    benchmark:
-        "benchmarks/chunk_runs/{library}.{run}.tsv"
-    shell:
-        chunk_command
 
 # rule make_chromsizes:
 #     input:

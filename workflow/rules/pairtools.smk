@@ -36,13 +36,7 @@ rule parse_sort_chunks:
 
 # Find out the chunk ids for each library and run - since we don't know them beforehand
 def get_pair_chunks(wildcards):
-    checkpoint_output = checkpoints.chunk_fastq.get(**wildcards).output
-    chunk_ids = glob_wildcards(
-        f"{processed_fastqs_folder}/{wildcards.library}/{wildcards.run}/2.{{chunk_id}}.fastq.gz",
-    ).chunk_id
-    # Normalize chunk_ids: strip "_trimmed" suffix if present
-    # This ensures consistent chunk_id resolution regardless of trimming state
-    chunk_ids = [cid.replace("_trimmed", "") for cid in chunk_ids]
+    chunk_ids = CHUNK_IDS[wildcards.library][wildcards.run]
     paths = expand(
         f"{mapped_parsed_sorted_chunks_folder}/{wildcards.library}/{wildcards.run}/{{chunk_id}}.{assembly}.pairs.gz",
         chunk_id=chunk_ids,

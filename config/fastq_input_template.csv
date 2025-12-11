@@ -1,5 +1,0 @@
-sample_id,lane,fastq1,fastq2
-test1,lane1,/data2/litian/macrophage/script/hic_pipeline/distiller-sm/test/fastq/MATa_R1/lane1/SRR2601848_1.fastq.gz,/data2/litian/macrophage/script/hic_pipeline/distiller-sm/test/fastq/MATa_R1/lane1/SRR2601848_2.fastq.gz
-test2,lane1,/data2/litian/macrophage/script/hic_pipeline/distiller-sm/test/fastq/MATa_R2/lane1/SRR2601851_1.fastq.gz,/data2/litian/macrophage/script/hic_pipeline/distiller-sm/test/fastq/MATa_R2/lane1/SRR2601851_2.fastq.gz
-test3,lane1,/data2/litian/macrophage/script/hic_pipeline/distiller-sm/test/fastq/MATalpha_R1/lane1/SRR2601842_1.fastq.gz,/data2/litian/macrophage/script/hic_pipeline/distiller-sm/test/fastq/MATalpha_R1/lane1/SRR2601842_2.fastq.gz
-test4,lane1,/data2/litian/macrophage/script/hic_pipeline/distiller-sm/test/fastq/MATalpha_R2/lane1/SRR2601845_1.fastq.gz,/data2/litian/macrophage/script/hic_pipeline/distiller-sm/test/fastq/MATalpha_R2/lane1/SRR2601845_2.fastq.gz

@@ -7,14 +7,7 @@ def get_all_chunk_stats_for_library(wc, stat_type):
     """
     all_files = []
     for run in LIBRARY_RUN_FASTQS[wc.library].keys():
-        # Trigger checkpoint
-        checkpoints.chunk_fastq.get(library=wc.library, run=run)
-        
-        # Discover chunk_ids
-        chunk_ids = glob_wildcards(
-            f"{processed_fastqs_folder}/{wc.library}/{run}/2.{{chunk_id}}.fastq.gz"
-        ).chunk_id
-        chunk_ids = [cid.replace("_trimmed", "") for cid in chunk_ids]
+        chunk_ids = CHUNK_IDS[wc.library][run]
 
         # Define file patterns and expansion params
         if stat_type == "pairstat":
@@ -156,7 +149,6 @@ rule combine_chunk_stats:
 
 rule multiqc:
     input:
-        fastqc,
         expand(
             f"{pairs_library_folder}/{{library}}.{assembly}.dedup.stats",
             library=LIBRARY_RUN_FASTQS.keys(),
@@ -178,7 +170,7 @@ rule multiqc:
         report=f"{multiqc_folder}/multiqc_report.html",
         dir=directory(multiqc_folder),
     shell:
-        r"""multiqc -f --outdir {output.dir} -m pairtools -m fastqc \
+        r"""multiqc -f --outdir {output.dir} -m pairtools \
         {params.input_dirs} \
         >{log} 2>&1"""
 

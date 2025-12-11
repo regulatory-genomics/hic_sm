@@ -1,0 +1,54 @@
+$schema: "http://json-schema.org/draft-06/schema#"
+
+description: sample sheet schema
+type: object
+properties:
+  sample_name:
+    type: string
+    description: "unique sample name / identifier. Sample or Sample_batch"
+    pattern: "^[^_]*_?[^_]*$"  # No more than one underscore.
+  run:
+    type: integer
+    description: "lane number"
+    minimum: 1
+  R1:
+    type: string
+    description: "path to the the read1 fastq file"
+    pattern: "(^|.*/)[^/]*R1[^/]*\\.(gz|zst)$"  # contains R1, gz/zst
+  R2:
+    type: string
+    description: "path to the the read2 fastq file"
+    pattern: "(^|.*/)[^/]*R2[^/]*\\.(gz|zst)$"
+  ligation_site:
+    type: string
+    description: "ligation site sequence used for cutsite trimming or parsing"
+  skip_ligation:
+    type: boolean
+    description: "whether to skip ligation-specific handling (true/false)"
+  organism:
+    type: string
+    description: "species"
+  sample:
+    type: string
+    description: "sample names"
+  batch:
+    type: string
+    description: "batch info"
+  tissue:
+    type: string
+    description: "Tissue location"
+  stage:
+    type: string
+    description: "Timepoint"
+  
+  passqc:
+    type: integer
+    description: "whether passqc. 1 for pass, 0 for not"
+    enum:
+      - 0
+      - 1
+
+required:
+  - sample_name
+  - run
+  - R1

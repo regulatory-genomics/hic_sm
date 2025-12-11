@@ -57,10 +57,7 @@ if config["map"]["mapper"] in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
                     f"{processed_fastqs_folder}/{{library}}/{{run}}/2.{{chunk_id}}_trimmed.fastq.gz",
                 ]
                 if config["map"]["trim_options"]
-                else [
-                    f"{processed_fastqs_folder}/{{library}}/{{run}}/1.{{chunk_id}}.fastq.gz",
-                    f"{processed_fastqs_folder}/{{library}}/{{run}}/2.{{chunk_id}}.fastq.gz",
-                ]
+            else get_raw_fastqs(wildcards)
             ),
             reference=genome_path,
             idx=idx,

@@ -51,14 +51,7 @@ def get_all_chunks_for_library(wildcards):
 
     # Loop over each run to find its chunks
     for run in runs_for_library:
-        # Make sure the chunks for this library/run combo are created first
-        checkpoints.chunk_fastq.get(library=wildcards.library, run=run)
-
-        # Find all chunk IDs for this specific run
-        chunk_ids = glob_wildcards(
-            f"{processed_fastqs_folder}/{wildcards.library}/{run}/2.{{chunk_id}}.fastq.gz",
-        ).chunk_id
-        chunk_ids = [cid.replace("_trimmed", "") for cid in chunk_ids]
+        chunk_ids = CHUNK_IDS[wildcards.library][run]
 
         # Generate the paths for this run's chunks and add them to the main list
         run_chunk_paths = expand(

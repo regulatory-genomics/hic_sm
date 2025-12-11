@@ -27,51 +27,6 @@ def argstring_to_dict(argstring):
     argdict = {str(arr[0]): (' '.join(arr[1:]) if arr.size > 1 else True) for arr in args_arrs }
     return argdict
 
-def needs_downloading(fastq_files, side):
-    if len(fastq_files) == 1 and fastq_files[0].startswith("sra:"):
-        return True
-    elif (
-        fastq_files[side].startswith("sra:")
-        or fastq_files[side].startswith("http://")
-        or fastq_files[side].startswith("ftp://")
-    ):
-        return True
-    else:
-        return False
-
-## Outputs a dictionary of the form {library: {run: [fastq1, fastq2]}}
-def parse_fastq_folder(root_folder_path):
-    library_run_fastqs = {}
-    fastq_root_folder = pathlib.Path(root_folder_path)
-    for fastq_file in sorted(fastq_root_folder.glob("**/*")):
-        if not fastq_file.is_file():
-            continue
-        split_path = fastq_file.relative_to(fastq_root_folder).parts
-        if len(split_path) != 3:
-            raise Exception(
-                "The fastq folder has a non-standard structure! "
-                "Please, make sure that the fastq folders only contains a folder "
-                "per library, each containing a folder per run, each _only_ containing "
-                "two fastq(.gz) files."
-            )
-        library, run, fastq = split_path
-
-        library_run_fastqs.setdefault(library, {}).setdefault(run, []).append(
-            str(fastq_file.absolute())
-        )
-
-    return library_run_fastqs
-
-
-def check_fastq_dict_structure(library_run_fastqs):
-    for library, run_dict in library_run_fastqs.items():
-        if not isinstance(run_dict, dict):
-            return False
-        for run, fastq_files in run_dict.items():
-            if not isinstance(fastq_files, list) or (len(fastq_files) > 2):
-                return False
-    return True
-
 
 def parse_fastq_dataframe(df):
     """
@@ -83,8 +38,18 @@ def parse_fastq_dataframe(df):
     Returns:
         dict: A nested dictionary with structure {library: {run: [fastq1, fastq2]}}
     """
-    # Validate required columns
-    required_columns = {'sample_id', 'lane', 'fastq1', 'fastq2'}
+    # Accept either fastq1/fastq2 or R1/R2 column naming
+    if {"fastq1", "fastq2"}.issubset(df.columns):
+        fastq1_col, fastq2_col = "fastq1", "fastq2"
+    elif {"R1", "R2"}.issubset(df.columns):
+        fastq1_col, fastq2_col = "R1", "R2"
+    else:
+        raise Exception(
+            "DataFrame is missing required FASTQ columns. Expected either "
+            "{fastq1, fastq2} or {R1, R2}."
+        )
+
+    required_columns = {"sample_id", "lane", fastq1_col, fastq2_col}
     if not required_columns.issubset(df.columns):
         missing = required_columns - set(df.columns)
         raise Exception(
@@ -98,8 +63,8 @@ def parse_fastq_dataframe(df):
     for _, row in df.iterrows():
         library = str(row['sample_id'])
         run = str(row['lane'])
-        fastq1 = str(row['fastq1'])
-        fastq2 = str(row['fastq2'])
+        fastq1 = str(row[fastq1_col])
+        fastq2 = str(row[fastq2_col])
         
         # Initialize nested dictionaries if they don't exist
         if library not in library_run_fastqs:
@@ -120,10 +85,6 @@ def organize_fastqs(config):
         raw_reads_input = pd.read_csv(fastq_csv)
     else:
         raw_reads_input = config["input"]["raw_reads_paths"]
-    
-    # Case 1: String path to a folder
-    if isinstance(raw_reads_input, str):
-        library_run_fastqs = parse_fastq_folder(raw_reads_input)
     
     # Case 2: pandas DataFrame
     elif isinstance(raw_reads_input, pd.DataFrame):
@@ -149,3 +110,26 @@ def organize_fastqs(config):
         )
 
     return library_run_fastqs
+
+
+
+def get_units_fastqs(w):
+    """
+    Resolve input FASTQs for a given sample_run wildcard.
+    Expects sample_run to be formatted as '{library}.{run}' if library/run are not present.
+    """
+    if hasattr(w, "library") and hasattr(w, "run"):
+        return get_raw_fastqs(w)
+    if hasattr(w, "sample_run"):
+        library, run = w.sample_run.split(".")
+        fastqs = LIBRARY_RUN_FASTQS[library][run]
+        return [
+            f"{downloaded_fastqs_folder}/{library}.{run}.1.fastq.gz"
+            if needs_downloading(fastqs, 0)
+            else fastqs[0],
+            f"{downloaded_fastqs_folder}/{library}.{run}.2.fastq.gz"
+            if needs_downloading(fastqs, 1)
+            else fastqs[1],
+        ]
+    raise ValueError("sample_run wildcard is required to resolve FASTQs.")
+

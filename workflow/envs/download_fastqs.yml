@@ -1,8 +1,0 @@
-name: download_fastqs_env
-channels:
-  - conda-forge
-  - bioconda
-  - nodefaults
-dependencies:
-  - sra-tools
-  - tabix

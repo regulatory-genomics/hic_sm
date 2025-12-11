@@ -212,16 +212,17 @@ bin:
 
 output:
     dirs:
-        downloaded_fastqs: '/data2/litian/macrophage/script/hic_pipeline/distiller-sm/test/fastq'
-        fastqc: '/data2/litian/macrophage/results/20251013_hic/fastqc'
-        processed_fastqs: '/data2/litian/macrophage/results/20251013_hic/processed_fastqs'
-        mapped_parsed_sorted_chunks: '/data2/litian/macrophage/results/20251013_hic/mapped_parsed_sorted_chunks'
-        pairs_runs: '/data2/litian/macrophage/results/20251013_hic/pairs_runs'
-        pairs_library: '/data2/litian/macrophage/results/20251013_hic/pairs_library'
-        coolers_library: '/data2/litian/macrophage/results/20251013_hic/coolers_library'
-        coolers_library_group: '/data2/litian/macrophage/results/20251013_hic/coolers_library_group'
-        stats_library_group: '/data2/litian/macrophage/results/20251013_hic/stats_library_group'
-        multiqc: '/data2/litian/macrophage/results/20251013_hic/multiqc'
+        downloaded_fastqs: '/data2/litian/macrophage/results/20251013_hic/refs/raw_fastq'
+        processed_fastqs: '/data2/litian/macrophage/results/20251013_hic/middle_file/Trimmed_fastq'
+        mapped_parsed_sorted_chunks: '/data2/litian/macrophage/results/20251013_hic/Important_processed/Bam'
+        pairs_runs: '/data2/litian/macrophage/results/20251013_hic/Important_processed/Track/pairs_runs'
+        pairs_library: '/data2/litian/macrophage/results/20251013_hic/Important_processed/Track/pairs_library'
+        coolers_library: '/data2/litian/macrophage/results/20251013_hic/Important_processed/Track/coolers_library'
+        coolers_library_group: '/data2/litian/macrophage/results/20251013_hic/Important_processed/Track/coolers_library_group'
+        stats_library_group: '/data2/litian/macrophage/results/20251013_hic/downstream_res/Homer/stats_library_group'
+        downstream_dist_folder: '/data2/litian/macrophage/results/20251013_hic/downstream_res/Homer/downstream_dist'
+        downstream_loops_folder: '/data2/litian/macrophage/results/20251013_hic/Important_processed/Peaks'
+        multiqc: '/data2/litian/macrophage/results/20251013_hic/Report'
 
 # To use automatic upload to resgen, add your credentials to  ~/.resgen/credentials
 # (see https://docs-python.resgen.io/cli.html#logging-in)
