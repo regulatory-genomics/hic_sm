@@ -137,7 +137,7 @@ bin:
 
 ##### OUTPUT DIRECTORIES #####
 
-output_base_dir: '/data2/litian/macrophage/results/20251017_hic_test'
+output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20251212_hic_test'
 
 output:
   dirs:

@@ -11,7 +11,7 @@ rule fastp:
         report_html=os.path.join(result_path, "report", "fastp", "{sample_run}_fastp.html"),
         report_json=os.path.join(result_path, "report", "fastp", "{sample_run}_fastp.json"),
     conda:
-        "../envs/fastp.yaml"
+        "../envs/fastp.yml"
     resources:
         mem_mb=16000,
         runtime=60,

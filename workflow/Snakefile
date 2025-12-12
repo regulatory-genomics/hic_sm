@@ -49,9 +49,21 @@ def resolve_config_paths(cfg, paths_dict):
     else:
         return cfg
 
-# Resolve path placeholders in config using PEP paths
+# Resolve path placeholders in config
+# First, resolve PEP paths (for placeholders like {process_dir}, {database_dir})
+paths_dict = {}
 if "paths" in config:
-    config = resolve_config_paths(config, config["paths"])
+    paths_dict.update(config["paths"])
+    config = resolve_config_paths(config, paths_dict)
+
+# Then resolve output_base_dir itself if it contains placeholders
+if "output_base_dir" in config and isinstance(config["output_base_dir"], str) and "{" in config["output_base_dir"]:
+    config["output_base_dir"] = resolve_config_paths(config["output_base_dir"], paths_dict)
+
+# Finally, add output_base_dir to paths_dict and resolve {output_base_dir} placeholders in output paths
+if "output_base_dir" in config:
+    paths_dict["output_base_dir"] = config["output_base_dir"]
+    config = resolve_config_paths(config, paths_dict)
 
 # Get sample table from PEP
 annot = pep_project.sample_table.copy()

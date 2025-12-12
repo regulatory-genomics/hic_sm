@@ -82,17 +82,17 @@ if config["parse"]["make_pairsam"]:
             >( pairtools split \
                 --output-pairs {output[0]} \
                 --output-sam {output[1]} \
-             ) \
+            ) \
         --output-unmapped \
             >( pairtools split \
                 --output-pairs {output[2]} \
                 --output-sam {output[3]} \
-             ) \
+            ) \
         --output-dups \
             >( pairtools split \
                 --output-pairs {output[4]} \
                 --output-sam {output[5]} \
-             ) \
+            ) \
         --output-stats {output[6]} \
         """
         + bytile_arg

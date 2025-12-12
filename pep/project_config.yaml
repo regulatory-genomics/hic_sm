@@ -13,5 +13,4 @@ paths:
   process_dir: "/storage/zhangkaiLab/hanlitian/macrophage/process"
   database_dir: "/storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline"
   shared_genome_dir: "/storage/zhangkaiLab/shared/genomes/GRCh38"
-  output_base_dir: "/storage/zhangkaiLab/hanlitian/macrophage/process/20251212_hic_test"
 
