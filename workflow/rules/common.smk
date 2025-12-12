@@ -22,19 +22,6 @@ def argstring_to_dict(argstring):
     return argdict
 
 
-def needs_downloading(fastq_files, side):
-    """Check if a FASTQ file needs to be downloaded."""
-    if len(fastq_files) == 1 and fastq_files[0].startswith("sra:"):
-        return True
-    elif (
-        fastq_files[side].startswith("sra:")
-        or fastq_files[side].startswith("http://")
-        or fastq_files[side].startswith("ftp://")
-    ):
-        return True
-    else:
-        return False
-
 
 # Helper functions for PEP-based workflows
 def get_runs_for_sample(sample_name):

@@ -53,8 +53,8 @@ if config["map"]["mapper"] in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
         input:
             reads=lambda wildcards: (
                 [
-                    f"{processed_fastqs_folder}/{{library}}/{{run}}/1.{{chunk_id}}_trimmed.fastq.gz",
-                    f"{processed_fastqs_folder}/{{library}}/{{run}}/2.{{chunk_id}}_trimmed.fastq.gz",
+                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.library}_{wildcards.run}_1.fq.gz"),
+                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.library}_{wildcards.run}_2.fq.gz"),
                 ]
                 if config["map"]["trim_options"]
             else get_raw_fastqs(wildcards)
@@ -83,9 +83,9 @@ if config["map"]["mapper"] == "bowtie2":
     rule bowtie2_global_align:
         input:
             sample=lambda wildcards: (
-                [f"{processed_fastqs_folder}/{{library}}/{{run}}/{wildcards.side}.{{chunk_id}}_trimmed.fastq.gz"]
+                [os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.library}_{wildcards.run}_{wildcards.side}.fq.gz")]
                 if config["map"]["trim_options"]
-                else [f"{processed_fastqs_folder}/{{library}}/{{run}}/{wildcards.side}.{{chunk_id}}.fastq.gz"]
+                else [get_raw_fastqs(wildcards)[int(wildcards.side)-1]]
             ),
             idx=idx,
         output:
@@ -290,16 +290,13 @@ if config["map"]["mapper"] == "chromap":
     rule map_chunks_chromap:
         input:
             reads=lambda wildcards: (
-            [
-                f"{processed_fastqs_folder}/{{library}}/{{run}}/1.{{chunk_id}}_trimmed.fastq.gz",
-                f"{processed_fastqs_folder}/{{library}}/{{run}}/2.{{chunk_id}}_trimmed.fastq.gz",
-            ]
-            if config["map"]["trim_options"]
-            else [
-                f"{processed_fastqs_folder}/{{library}}/{{run}}/1.{{chunk_id}}.fastq.gz",
-                f"{processed_fastqs_folder}/{{library}}/{{run}}/2.{{chunk_id}}.fastq.gz",
-            ]
-        ),
+                [
+                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.library}_{wildcards.run}_1.fq.gz"),
+                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.library}_{wildcards.run}_2.fq.gz"),
+                ]
+                if config["map"]["trim_options"]
+                else get_raw_fastqs(wildcards)
+            ),
             reference=genome_path,
             idx=multiext(genome_path, ".chromap.index"),
         params:

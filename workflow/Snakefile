@@ -13,11 +13,18 @@ min_version("8.20.1")
 module_name = "hic_pipeline"
 
 ##### load config and sample annotation sheets #####
-configfile: os.path.join("config", "config.yaml")
+configfile: os.path.join("config", "test_config.yml")
 
 # Load PEP project to get sample metadata
-pep_config_value = config.get("pep_config", os.path.join("config", "hg38_test_pep.yaml"))
-pep_config_path = pep_config_value if os.path.isabs(pep_config_value) else os.path.join(workflow.basedir, pep_config_value)
+pep_config_value = config.get("pep_config", os.path.join("pep", "project_config.yaml"))
+# Resolve PEP path; if relative, treat it as relative to the repo root (one level above workflow/)
+if os.path.isabs(pep_config_value):
+    pep_config_path = pep_config_value
+else:
+    pep_config_path = os.path.abspath(os.path.join(workflow.basedir, "..", pep_config_value))
+
+if not os.path.exists(pep_config_path):
+    raise OSError(f"Project config file path does not exist: {pep_config_path}")
 
 # Load PEP project
 pep_project = Project(pep_config_path)
@@ -65,19 +72,34 @@ missing_required = required_columns.difference(annot.columns)
 if missing_required:
     raise ValueError(f"Sample table missing required columns: {', '.join(sorted(missing_required))}.")
 
-# Ensure run column is string
-annot['run'] = annot['run'].astype(str)
+# Ensure run column is integer for schema validation
+annot['run'] = pd.to_numeric(annot['run'], errors='raise').astype(int)
 
 # Ensure passqc column is integer if it exists
 if 'passqc' in annot.columns:
     annot['passqc'] = pd.to_numeric(annot['passqc'], errors='coerce').fillna(0).astype(int)
 
-# Create a unique identifier for each run: sample_name_run
+# Normalize skip_ligation to boolean if present
+if 'skip_ligation' in annot.columns:
+    annot['skip_ligation'] = (
+        annot['skip_ligation']
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map({'true': True, 'false': False})
+    )
+    # Default to False for any unrecognized/NA values
+    annot['skip_ligation'] = annot['skip_ligation'].fillna(False).astype(bool)
+
+# Create a unique identifier for each run: sample_name_run (store run as string for downstream paths)
 annot['sample_name'] = annot['sample_name'].astype(str)
 annot['sample_run'] = annot['sample_name'] + '_' + annot['run'].astype(str)
 
 # Validate sample table
 validate(annot, schema="../schemas/sample.schemas.yml")
+
+# Convert run back to string for downstream path building
+annot['run'] = annot['run'].astype(str)
 
 # Check for duplicate sample_run identifiers
 duplicates = annot[annot.duplicated(subset=['sample_run'], keep=False)]
@@ -279,7 +301,7 @@ if config.get('phase', {}).get('do_phase', False):
         raise ValueError(
             "Please set '--add-columns XB,NM,AS,XS,mapq' in the parsing options to use phasing with XB tag mode."
         )
-    dedup_options = config["dedup"].get("dedup_options", "")
+    dedup_options = config["dedup"].get("dedup_options", "") 
     if '--extra-col-pair phase1 phase1' not in dedup_options or '--extra-col-pair phase2 phase2' not in dedup_options:
         raise ValueError(
             "Please add '--extra-col-pair phase1 phase2' in the dedup options to use phasing."

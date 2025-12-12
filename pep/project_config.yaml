@@ -1,0 +1,17 @@
+pep_version: "2.0.0"
+
+project_name: 20251212_hic_test
+
+description: "PEP definition for the Hi-C workflow."
+
+sample_table: ../config/hg38_test_sample.csv
+
+# Project-level path variables
+# These can be referenced in config using {placeholder} syntax
+paths:
+  data_dir: "/storage/zhangkaiLab/hanlitian/macrophage/data/HiC"
+  process_dir: "/storage/zhangkaiLab/hanlitian/macrophage/process"
+  database_dir: "/storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline"
+  shared_genome_dir: "/storage/zhangkaiLab/shared/genomes/GRCh38"
+  output_base_dir: "/storage/zhangkaiLab/hanlitian/macrophage/process/20251212_hic_test"
+
