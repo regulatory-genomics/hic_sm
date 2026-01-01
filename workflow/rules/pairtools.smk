@@ -114,16 +114,10 @@ rule merge_dedup:
     input:
         pairs=f"{mapped_parsed_sorted_chunks_folder}/{{library}}.{assembly}.pairs.gz",
     params:
-        dedup_options=lambda wildcards: config["dedup"].get("dedup_options", ""),
+        dedup_options=get_dedup_options,
         max_mismatch_bp=config["dedup"]["max_mismatch_bp"],
-        input_command=lambda wildcards, input, threads: (
-            f"bgzip -dc -@ {threads-1} {input.pairs} | "
-        ),
-        phase_command=lambda wildcards, threads: (
-            f'pairtools phase --tag-mode {config["phase"]["tag_mode"]} --phase-suffixes {" ".join(config["phase"]["suffixes"])} | pairtools sort --nproc {threads - 1} | '
-            if config.get("phase", {}).get("do_phase", False)
-            else ''
-        ),
+        input_command=get_input_command,
+        phase_command=get_phase_command,
     threads: 4
     conda:
         "../envs/pairtools_cooler.yml"

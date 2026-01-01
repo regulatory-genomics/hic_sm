@@ -1,4 +1,7 @@
 import os
+from pathlib import Path
+
+# Quality Control Rules
 
 # Main fastp rule using PEP-based sample_run format
 rule fastp:
@@ -21,4 +24,29 @@ rule fastp:
     shell:
         "fastp -i {input.r1} -I {input.r2} -o {output.r1} -O {output.r2} --detect_adapter_for_pe --trim_poly_g --thread {threads} -j {output.report_json} -h {output.report_html}"
 
+
+rule multiqc:
+    input:
+        expand(
+            f"{pairs_library_folder}/{{library}}.{assembly}.dedup.stats",
+            library=SAMPLE_FASTQS.keys(),
+        ),
+        expand(
+            f"{stats_library_group_folder}/{{library_group}}.{assembly}.stats",
+            library_group=config["input"]["library_groups"].keys(),
+        )
+        if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0
+        else [],
+    conda:
+        "../envs/multiqc.yml"
+    log:
+        "logs/multiqc.log",
+    params:
+        input_dirs=lambda wildcards, input: list(set([Path(f).parent for f in input])),
+        outdir=multiqc_folder,
+    output:
+        report=f"{multiqc_folder}/multiqc_report.html",
+    shell:
+        r"""multiqc -f --outdir {params.outdir} {params.input_dirs} \
+        >{log} 2>&1"""
 
