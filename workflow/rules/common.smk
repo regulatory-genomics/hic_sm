@@ -28,7 +28,9 @@ def get_runs_for_sample(sample_name):
     """Get all runs for a given sample name"""
     if 'annot' not in globals():
         return []
-    sample_runs = annot[annot.reset_index()['sample_name'] == sample_name].index.tolist()
+    # Reset index to access sample_name column, then filter
+    annot_reset = annot.reset_index()
+    sample_runs = annot_reset[annot_reset['sample_name'] == sample_name]['sample_run'].tolist()
     return sample_runs if len(sample_runs) > 0 else []
 
 

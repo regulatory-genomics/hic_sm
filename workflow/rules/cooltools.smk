@@ -156,3 +156,19 @@ rule scaling_pairs_library:
         {input.pairs} \
         >{log[0]} 2>&1
         """
+
+
+rule merge_stats_libraries_into_groups:
+    input:
+        lambda wildcards: expand(
+            f"{pairs_library_folder}/{{library}}.{assembly}.dedup.stats",
+            library=config["input"]["library_groups"][wildcards.library_group],
+        ),
+    conda:
+        "../envs/pairtools_cooler.yml"
+    log:
+        "logs/merge_stats_libraries_into_groups/{library_group}.log",
+    output:
+        f"{stats_library_group_folder}/{{library_group}}.{assembly}.stats",
+    shell:
+        r"pairtools stats --merge {input} -o {output} >{log[0]} 2>&1"

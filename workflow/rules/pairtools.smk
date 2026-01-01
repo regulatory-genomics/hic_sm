@@ -2,11 +2,11 @@
 
 rule parse_sort_chunks:
     input:
-        bam=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.bam",
+        bam=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.bam",
         chromsizes=chromsizes_path,
     threads: 4
     params:
-        # keep_bams_command=f"| tee >(samtools view -bS > {mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.{assembly}.bam)"
+        # keep_bams_command=f"| tee >(samtools view -bS > {mapped_parsed_sorted_chunks_folder}/{{sample}}.{assembly}.bam)"
         # if config["parse"]["keep_unparsed_bams"]
         # else "",
         dropsam_flag="" if config["parse"].get("make_pairsam", False) else "--drop-sam",
@@ -18,11 +18,11 @@ rule parse_sort_chunks:
     conda:
         "../envs/pairtools_cooler.yml"
     output:
-        f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.{assembly}.pairs.gz",
+        f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.{assembly}.pairs.gz",
     benchmark:
-        "benchmarks/parse_sort_chunks/{library}.{run}.{chunk_id}.tsv"
+        "benchmarks/parse_sort_chunks/{sample}.tsv"
     log:
-        "logs/parse_sort_chunks/{library}.{run}.{chunk_id}.log",
+        "logs/parse_sort_chunks/{sample}.log",
     shell:
         r"""
         pairtools parse {params.dropsam_flag} {params.dropreadid_flag} {params.dropseq_flag} \
@@ -34,38 +34,9 @@ rule parse_sort_chunks:
 
 
 
-# Find out the chunk ids for each library and run - since we don't know them beforehand
+# Since there's only one chunk per sample (no chunking), return single path
 def get_pair_chunks(wildcards):
-    chunk_ids = CHUNK_IDS[wildcards.library][wildcards.run]
-    paths = expand(
-        f"{mapped_parsed_sorted_chunks_folder}/{wildcards.library}/{wildcards.run}/{{chunk_id}}.{assembly}.pairs.gz",
-        chunk_id=chunk_ids,
-    )
-    return paths
-
-
-rule merge_runs:
-    input:
-        get_pair_chunks,
-    threads: 4
-    conda:
-        "../envs/pairtools_cooler.yml"
-    output:
-        f"{pairs_runs_folder}/{{library}}/{{run}}.{assembly}.pairs.gz",
-    log:
-        "logs/merge_runs/{library}.{run}.log",
-    benchmark:
-        "benchmarks/merge_runs/{library}.{run}.tsv"
-    params:
-        command=lambda wildcards, input, threads, output: (
-            f"pairtools merge {input} --nproc {threads} -o {output}"
-            if len(input) > 1
-            else f"cp {input} {output}"
-        ),
-    shell:
-        r"""{params.command} \
-        >{log[0]} 2>&1
-        """
+    return [f"{mapped_parsed_sorted_chunks_folder}/{wildcards.sample}.{assembly}.pairs.gz"]
 
 
 if config["parse"]["make_pairsam"]:
@@ -141,17 +112,12 @@ if config["dedup"].get("save_by_tile_dups", False):
 
 rule merge_dedup:
     input:
-        pairs=lambda wildcards: expand(
-            f"{pairs_runs_folder}/{wildcards.library}/{{run}}.{assembly}.pairs.gz",
-            run=list(LIBRARY_RUN_FASTQS[wildcards.library].keys()),
-        ),
+        pairs=f"{mapped_parsed_sorted_chunks_folder}/{{library}}.{assembly}.pairs.gz",
     params:
         dedup_options=lambda wildcards: config["dedup"].get("dedup_options", ""),
         max_mismatch_bp=config["dedup"]["max_mismatch_bp"],
-        merge_command=lambda wildcards, input, threads: (
-            f"pairtools merge {input} --nproc {threads} | "
-            if len(input) > 1
-            else f"bgzip -dc -@ {threads-1} {input} | "
+        input_command=lambda wildcards, input, threads: (
+            f"bgzip -dc -@ {threads-1} {input.pairs} | "
         ),
         phase_command=lambda wildcards, threads: (
             f'pairtools phase --tag-mode {config["phase"]["tag_mode"]} --phase-suffixes {" ".join(config["phase"]["suffixes"])} | pairtools sort --nproc {threads - 1} | '
@@ -168,7 +134,7 @@ rule merge_dedup:
     benchmark:
         "benchmarks/merge_dedup/{library}.tsv"
     shell:
-        r"{params.merge_command}" + r"{params.phase_command}" + dedup_command + " >{log[0]} 2>&1"
+        r"{params.input_command}" + r"{params.phase_command}" + dedup_command + " >{log[0]} 2>&1"
 
 
 # balance_args = "--balance" if {config["bin"].get("balance", True)} else ""

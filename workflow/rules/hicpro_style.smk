@@ -18,16 +18,16 @@ rule digest_genome:
 # To do : use rust version to replace
 rule map2frag:
     input:
-        bam=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.bam",
+        bam=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.bam",
         fragments_file = config["parse"].get("fragment_file")
     output:
-        validPairs=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.hicpro.validPairs",
-        validPairsRSstat = f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.hicpro.RSstat",
+        validPairs=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.hicpro.validPairs",
+        validPairsRSstat = f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.hicpro.RSstat",
     threads: 4
     benchmark:
-        "benchmarks/map2frag/{library}.{run}.{chunk_id}.tsv"
+        "benchmarks/map2frag/{sample}.tsv"
     log:
-        "logs/map2frag/{library}.{run}.{chunk_id}.log",
+        "logs/map2frag/{sample}.log",
     conda:
         "../envs/hic2frag.yml"
     shell:
@@ -39,34 +39,16 @@ rule map2frag:
             &> {log}
         """
 
-# Find out the chunk ids for each library and run - since we don't know them beforehand
-def get_all_chunks_for_library(wildcards):
+# Since there's only one chunk per sample, return single path
+def get_all_chunks_for_sample(wildcards):
     """
-    Gathers all chunk-level .validPairs files from ALL runs that
-    belong to the requested library.
+    Returns the .validPairs file for the requested sample.
     """
-    all_chunk_paths = []
-    # Get all run keys (e.g., 'run1', 'run2') for the given library
-    runs_for_library = LIBRARY_RUN_FASTQS[wildcards.library].keys()
-
-    # Loop over each run to find its chunks
-    for run in runs_for_library:
-        chunk_ids = CHUNK_IDS[wildcards.library][run]
-
-        # Generate the paths for this run's chunks and add them to the main list
-        run_chunk_paths = expand(
-            f"{mapped_parsed_sorted_chunks_folder}/{wildcards.library}/{run}/{{chunk_id}}.hicpro.validPairs",
-            library=wildcards.library,
-            run=run,
-            chunk_id=chunk_ids
-        )
-        all_chunk_paths.extend(run_chunk_paths)
-
-    return all_chunk_paths
+    return [f"{mapped_parsed_sorted_chunks_folder}/{wildcards.library}.hicpro.validPairs"]
 
 rule merge_library_pairs:
     input:
-        get_all_chunks_for_library
+        get_all_chunks_for_sample
     threads: 2
     output:
         f"{pairs_library_folder}/{{library}}.allValidPairs",

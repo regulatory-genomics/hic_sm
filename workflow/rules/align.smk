@@ -52,29 +52,33 @@ if config["map"]["mapper"] in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
     rule map_chunks_bwa:
         input:
             reads=lambda wildcards: (
-                [
-                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.library}_{wildcards.run}_1.fq.gz"),
-                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.library}_{wildcards.run}_2.fq.gz"),
-                ]
+                (
+                    [os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.sample}_1.fq.gz")],
+                    [os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.sample}_2.fq.gz")]
+                )
                 if config["map"]["trim_options"]
-            else get_raw_fastqs(wildcards)
+                else get_sample_fastqs(wildcards)
             ),
             reference=genome_path,
             idx=idx,
         params:
             bwa=config["map"]["mapper"],
             extra="-SP5M",
-            sort="none",
-            dedup="none",
         threads: 4
         output:
-            f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.bam",
+            f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.bam",
         log:
-            "logs/bwa_memx/{library}.{run}.{chunk_id}.log",
+            "logs/bwa_memx/{sample}.log",
         benchmark:
-            "benchmarks/bwa_memx/{library}.{run}.{chunk_id}.tsv"
-        wrapper:
-            "v4.6.0/bio/bwa-memx/mem"
+            "benchmarks/bwa_memx/{sample}.tsv"
+        shell:
+            r"""
+            # Use process substitution to concatenate multiple FASTQ files
+            {params.bwa} mem -SP5M -t {threads} {input.reference} \
+            <(cat {' '.join(input.reads[0])}) \
+            <(cat {' '.join(input.reads[1])}) \
+            | samtools view -@ {threads} -bS - > {output} 2>{log}
+            """
 
 
 if config["map"]["mapper"] == "bowtie2":
@@ -83,28 +87,26 @@ if config["map"]["mapper"] == "bowtie2":
     rule bowtie2_global_align:
         input:
             sample=lambda wildcards: (
-                [os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.library}_{wildcards.run}_{wildcards.side}.fq.gz")]
+                [os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.sample}_{wildcards.side}.fq.gz")]
                 if config["map"]["trim_options"]
-                else [get_raw_fastqs(wildcards)[int(wildcards.side)-1]]
+                else get_sample_fastqs(wildcards)[int(wildcards.side)-1] if isinstance(get_sample_fastqs(wildcards)[int(wildcards.side)-1], list) else [get_sample_fastqs(wildcards)[int(wildcards.side)-1]]
             ),
             idx=idx,
         output:
-            bam=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}_{{side}}.global.bam",
-            unaligned=temp(f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}_{{side}}.global.unmap.fastq"),
+            bam=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.global.bam",
+            unaligned=temp(f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.global.unmap.fastq"),
         params:
             extra=config["map"].get("rescue_options", {}).get("global_extra", "--very-sensitive -L 30 --score-min L,-0.6,-0.2 --end-to-end --reorder"),
             samtools_flags=lambda wildcards: (
                 "-@ {threads} -bS -"  # Flags if skip_ligation is True
-                if SAMPLE_METADATA.get(wildcards.library, {})
-                                 .get(wildcards.run, {})
-                                 .get('skip_ligation', False)
+                if SAMPLE_METADATA.get(wildcards.sample, {}).get('skip_ligation', False)
                 else "-F 4 -@ {threads} -bS -" # Default flags (not skipping ligation)
             )
         threads: 8
         log:
-            "logs/bowtie2_global/{library}.{run}.{chunk_id}_{side}.log",
+            "logs/bowtie2_global/{sample}_{side}.log",
         benchmark:
-            "benchmarks/bowtie2_global/{library}.{run}.{chunk_id}_{side}.tsv"
+            "benchmarks/bowtie2_global/{sample}_{side}.tsv"
         wildcard_constraints:
             side="[12]"
         conda:
@@ -116,7 +118,7 @@ if config["map"]["mapper"] == "bowtie2":
             (bowtie2 {params.extra} \
                 -p {threads} \
                 -x "${{index_prefix}}" \
-                -U {input.sample[0]} \
+                -U {','.join(input.sample)} \
                 --un {output.unaligned} \
                 2> {log}) \
             | samtools view {params.samtools_flags} \
@@ -127,17 +129,15 @@ if config["map"]["mapper"] == "bowtie2":
     # Step 2: Cutsite trimming for unmapped reads
     rule cutsite_trim:
         input:
-            fastq=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}_{{side}}.global.unmap.fastq",
+            fastq=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.global.unmap.fastq",
         output:
-            fastq=temp(f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}_{{side}}.trimmed.fastq"),
+            fastq=temp(f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.trimmed.fastq"),
         params:
             cutsite=lambda wildcards: (
-                SAMPLE_METADATA.get(wildcards.library, {})
-                               .get(wildcards.run, {})
-                               .get('ligation_site', config["map"].get("cutsite", "GATCGATC"))
+                SAMPLE_METADATA.get(wildcards.sample, {}).get('ligation_site', config["map"].get("cutsite", "GATCGATC"))
             ),
         log:
-            "logs/cutsite_trim/{library}.{run}.{chunk_id}_{side}.log",
+            "logs/cutsite_trim/{sample}_{side}.log",
         wildcard_constraints:
             side="[12]"
         conda:
@@ -148,17 +148,17 @@ if config["map"]["mapper"] == "bowtie2":
     # Step 3: Local alignment for trimmed reads
     rule bowtie2_local_align:
         input:
-            sample=[f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}_{{side}}.trimmed.fastq"],
+            sample=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.trimmed.fastq",
             idx=idx,
         output:
-            bam=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}_{{side}}.local.bam",
+            bam=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.local.bam",
         params:
             extra=config["map"].get("rescue_options", {}).get("local_extra", "--very-sensitive -L 20 --score-min L,-0.6,-0.2 --end-to-end --reorder"),
         threads: 8
         log:
-            "logs/bowtie2_local/{library}.{run}.{chunk_id}_{side}.log",
+            "logs/bowtie2_local/{sample}_{side}.log",
         benchmark:
-            "benchmarks/bowtie2_local/{library}.{run}.{chunk_id}_{side}.tsv"
+            "benchmarks/bowtie2_local/{sample}_{side}.tsv"
         wildcard_constraints:
             side="[12]"
         conda:
@@ -171,7 +171,7 @@ if config["map"]["mapper"] == "bowtie2":
             (bowtie2 {params.extra} \
                 -p {threads} \
                 -x "${{index_prefix}}" \
-                -U {input.sample[0]} \
+                -U {input.sample} \
                 2> {log}) \
             | samtools view -@ {threads} -bS - \
             > {output.bam}
@@ -184,21 +184,17 @@ if config["map"]["mapper"] == "bowtie2":
         Otherwise, return both global_bam and local_bam.
         """
         # Check the skip_ligation flag from the metadata
-        skip_ligation = (
-            SAMPLE_METADATA.get(wildcards.library, {})
-                        .get(wildcards.run, {})
-                        .get('skip_ligation', False)
-        )
+        skip_ligation = SAMPLE_METADATA.get(wildcards.sample, {}).get('skip_ligation', False)
 
         # Start with the global_bam, which is always required
         input_files = [
-            f"{mapped_parsed_sorted_chunks_folder}/{wildcards.library}/{wildcards.run}/{wildcards.chunk_id}_{wildcards.side}.global.bam"
+            f"{mapped_parsed_sorted_chunks_folder}/{wildcards.sample}_{wildcards.side}.global.bam"
         ]
 
         # If we are NOT skipping ligation, add the local_bam
         if not skip_ligation:
             input_files.append(
-                f"{mapped_parsed_sorted_chunks_folder}/{wildcards.library}/{wildcards.run}/{wildcards.chunk_id}_{wildcards.side}.local.bam"
+                f"{mapped_parsed_sorted_chunks_folder}/{wildcards.sample}_{wildcards.side}.local.bam"
             )
 
         # Return the list of files
@@ -210,11 +206,11 @@ if config["map"]["mapper"] == "bowtie2":
         input:
             get_merge_inputs 
         output:
-            merged=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}_{{side}}.merged.bam",
-            mapstat=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}_{{side}}.mapstat",
+            merged=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.merged.bam",
+            mapstat=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.mapstat",
         threads: 4
         log:
-            "logs/merge_global_local/{library}.{run}.{chunk_id}_{side}.log",
+            "logs/merge_global_local/{sample}_{side}.log",
         wildcard_constraints:
             side="[12]"
         params:
@@ -266,22 +262,22 @@ if config["map"]["mapper"] == "bowtie2":
     # Step 5: Pair R1 and R2 reads using mergeSAM.py
     rule pair_rescue_reads:
         input:
-            r1=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}_1.merged.bam",
-            r2=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}_2.merged.bam",
+            r1=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_1.merged.bam",
+            r2=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_2.merged.bam",
         output:
-            paired=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.bam",
-            stats=f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.pairstat",
+            paired=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.bam",
+            stats=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.pairstat",
         params:
             min_mapq=config["map"].get("rescue_options", {}).get("min_mapq", 10),
         threads: 4
         log:
-            "logs/pair_rescue/{library}.{run}.{chunk_id}.log",
+            "logs/pair_rescue/{sample}.log",
         conda:
             "../envs/bowtie2_rescue.yml"
         shell:
             r"""
             python workflow/scripts/mergeSAM.py -v -t -q {params.min_mapq} -f {input.r1} -r {input.r2} -o {output.paired} >{log} 2>&1
-            rm "{mapped_parsed_sorted_chunks_folder}/{wildcards.library}/{wildcards.run}/{wildcards.chunk_id}_1"*.bam "{mapped_parsed_sorted_chunks_folder}/{wildcards.library}/{wildcards.run}/{wildcards.chunk_id}_2"*.bam
+            rm "{mapped_parsed_sorted_chunks_folder}/{wildcards.sample}_1"*.bam "{mapped_parsed_sorted_chunks_folder}/{wildcards.sample}_2"*.bam
             """
 
 
@@ -291,11 +287,11 @@ if config["map"]["mapper"] == "chromap":
         input:
             reads=lambda wildcards: (
                 [
-                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.library}_{wildcards.run}_1.fq.gz"),
-                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.library}_{wildcards.run}_2.fq.gz"),
+                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.sample}_1.fq.gz"),
+                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.sample}_2.fq.gz"),
                 ]
                 if config["map"]["trim_options"]
-                else get_raw_fastqs(wildcards)
+                else get_sample_fastqs(wildcards)
             ),
             reference=genome_path,
             idx=multiext(genome_path, ".chromap.index"),
@@ -303,20 +299,23 @@ if config["map"]["mapper"] == "chromap":
             extra=config["map"].get("mapping_options", ""),
         threads: 8
         output:
-            f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.{assembly}.pairs.gz",
+            f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.{assembly}.pairs.gz",
         log:
-            "logs/chromap/{library}.{run}.{chunk_id}.log",
+            "logs/chromap/{sample}.log",
         benchmark:
-            "benchmarks/chromap/{library}.{run}.{chunk_id}.tsv"
+            "benchmarks/chromap/{sample}.tsv"
         conda:
             "../envs/chromap.yml"
         shell:
             # chromap doesn't output gzip files, so we need to pipe it to bgzip
             # It doesn't work with low memory mode, so we can't use the hic preset
             # Hence I provide all arguments manually except for --low-mem
+            # Use comma-separated FASTQ files
             r"""
             chromap -e 4 -q 1 --split-alignment --pairs -x {input.idx} -r {input.reference} \
             -t {threads} {params.extra} \
-            -1 {input.reads[0]} -2 {input.reads[1]} -o /dev/stdout 2>{log} | \
+            -1 {','.join(input.reads[0]) if isinstance(input.reads[0], list) else input.reads[0]} \
+            -2 {','.join(input.reads[1]) if isinstance(input.reads[1], list) else input.reads[1]} \
+            -o /dev/stdout 2>{log} | \
             bgzip > {output} \
             """

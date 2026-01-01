@@ -1,37 +1,64 @@
 
+# Assemble per-side mapstat files into a single assemble.mapstat file
+# Only for Bowtie2 mapper (which creates per-side mapstat files)
+if config["map"]["mapper"] == "bowtie2":
+    rule assemble_mapstat:
+        input:
+            mapstat_1=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_1.mapstat",
+            mapstat_2=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_2.mapstat",
+        output:
+            assemble_mapstat=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.assemble.mapstat",
+        shell:
+            r"""
+            cat {input.mapstat_1} {input.mapstat_2} > {output.assemble_mapstat}
+            """
 
-def get_all_chunk_stats_for_library(wc, stat_type):
-    """
-    Generic input function to get all chunk-level stats for a given library.
-    Handles pairstat, mapstat, and RSstat.
-    """
-    all_files = []
-    for run in LIBRARY_RUN_FASTQS[wc.library].keys():
-        chunk_ids = CHUNK_IDS[wc.library][run]
+    # Copy pairstat to assemble.pairstat (for consistency)
+    # Only for Bowtie2 mapper (which creates pairstat files)
+    rule assemble_pairstat:
+        input:
+            pairstat=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.pairstat",
+        output:
+            assemble_pairstat=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.assemble.pairstat",
+        shell:
+            r"""
+            cp {input.pairstat} {output.assemble_pairstat}
+            """
+else:
+    # For non-Bowtie2 mappers, create empty assemble files
+    rule assemble_mapstat:
+        output:
+            assemble_mapstat=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.assemble.mapstat",
+        shell:
+            r"""
+            touch {output.assemble_mapstat}
+            """
 
-        # Define file patterns and expansion params
-        if stat_type == "pairstat":
-            pattern = f"{mapped_parsed_sorted_chunks_folder}/{wc.library}/{run}/{{chunk_id}}.pairstat"
-            params = {"chunk_id": chunk_ids}
-        elif stat_type == "mapstat":
-            pattern = f"{mapped_parsed_sorted_chunks_folder}/{wc.library}/{run}/{{chunk_id}}_{{side}}.mapstat"
-            params = {"chunk_id": chunk_ids, "side": ["1", "2"]}
-        elif stat_type == "RSstat":
-            pattern = f"{mapped_parsed_sorted_chunks_folder}/{wc.library}/{run}/{{chunk_id}}.hicpro.RSstat"
-            params = {"chunk_id": chunk_ids}
-        else:
-            raise ValueError(f"Unknown stat_type: {stat_type}")
+    rule assemble_pairstat:
+        output:
+            assemble_pairstat=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.assemble.pairstat",
+        shell:
+            r"""
+            touch {output.assemble_pairstat}
+            """
 
-        all_files.extend(expand(pattern, **params))
-        
-    return sorted(all_files)
+# Copy RSstat to assemble.RSstat (created by map2frag rule for all mappers)
+rule assemble_RSstat:
+    input:
+        rsstat=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.hicpro.RSstat",
+    output:
+        assemble_rsstat=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.assemble.RSstat",
+    shell:
+        r"""
+        cp {input.rsstat} {output.assemble_rsstat}
+        """
 
 
 rule concat_stats:
     input:
         stats=lambda wc: expand(
-            f"{mapped_parsed_sorted_chunks_folder}/{{library}}/assemble.{wc.stat_type}",
-            library=LIBRARY_RUN_FASTQS.keys(),
+            f"{mapped_parsed_sorted_chunks_folder}/{{library}}.assemble.{wc.stat_type}",
+            library=SAMPLE_FASTQS.keys(),
         ),
     output:
         # Use {stat_type}s to create ..._mapstats_summary.tsv, etc.
@@ -44,7 +71,8 @@ rule concat_stats:
         from pathlib import Path
 
         # This logic is now generic and works for all stat types
-        library_names = [Path(f).parent.name for f in input.stats]
+        # Extract library name from filename (e.g., "test1.assemble.mapstat" -> "test1")
+        library_names = [Path(f).stem.split('.assemble')[0] for f in input.stats]
         input_files_str = " ".join(input.stats)
         names_str = " ".join(library_names)
 
@@ -61,7 +89,7 @@ rule concat_dedup_stats:
     input:
         expand(
             f"{pairs_library_folder}/{{library}}.{assembly}.dedup.stats",
-            library=LIBRARY_RUN_FASTQS.keys(),
+            library=SAMPLE_FASTQS.keys(),
         ),
     output:
         summary=f"{pairs_library_folder}/combined_dedup_stats_summary.tsv",
@@ -106,7 +134,7 @@ rule concat_hicpro_pairstat:
     input:
         hicproPairStats=expand(
             f"{pairs_library_folder}/{{library}}.allValidPairs.mergestat",
-            library=LIBRARY_RUN_FASTQS.keys(),
+            library=SAMPLE_FASTQS.keys(),
         ),
     output:
         summary=f"{pairs_library_folder}/combined_hicpro_pairstats_summary.tsv",
@@ -131,27 +159,12 @@ rule concat_hicpro_pairstat:
             "-l {log}"
         )
 
-rule combine_chunk_stats:
-    input:
-        # Pass the stat_type wildcard from the output file to the input function
-        lambda wc: get_all_chunk_stats_for_library(wc, wc.stat_type)
-    output:
-        f"{mapped_parsed_sorted_chunks_folder}/{{library}}/assemble.{{stat_type}}"
-    log:
-        "logs/combine_chunk_stats/{{library}}.{stat_type}.log"
-    wildcard_constraints:
-        stat_type="pairstat|mapstat|RSstat"  # Ensures this rule only runs for these stats
-    shell:
-        "python workflow/scripts/merge_statfiles.py -f {input} > {output} 2>{log}"
-
-
-
 
 rule multiqc:
     input:
         expand(
             f"{pairs_library_folder}/{{library}}.{assembly}.dedup.stats",
-            library=LIBRARY_RUN_FASTQS.keys(),
+            library=SAMPLE_FASTQS.keys(),
         ),
         expand(
             f"{stats_library_group_folder}/{{library_group}}.{assembly}.stats",
@@ -165,13 +178,11 @@ rule multiqc:
         "logs/multiqc.log",
     params:
         input_dirs=lambda wildcards, input: list(set([Path(f).parent for f in input])),
-        outdir=lambda wildcards, output: Path(output[0]).parent,
+        outdir=multiqc_folder,
     output:
         report=f"{multiqc_folder}/multiqc_report.html",
-        dir=directory(multiqc_folder),
     shell:
-        r"""multiqc -f --outdir {output.dir} -m pairtools \
-        {params.input_dirs} \
+        r"""multiqc -f --outdir {params.outdir} {params.input_dirs} \
         >{log} 2>&1"""
 
 

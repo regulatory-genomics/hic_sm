@@ -105,7 +105,7 @@ if 'skip_ligation' in annot.columns:
 
 # Create a unique identifier for each run: sample_name_run (store run as string for downstream paths)
 annot['sample_name'] = annot['sample_name'].astype(str)
-annot['sample_run'] = annot['sample_name'] + '_' + annot['run'].astype(str)
+annot['sample_run'] = annot['sample_name'] + '_run' + annot['run'].astype(str)
 
 # Validate sample table
 validate(annot, schema="../schemas/sample.schemas.yml")
@@ -152,13 +152,12 @@ genome_path = config["input"]["genome"]["bwa_index_wildcard_path"].rstrip("*")
 bowtie_index_path = config["input"]["genome"]["bowtie_index_path"].rstrip("*")
 chromsizes_path = config["input"]["genome"]["chrom_sizes_path"]
 
-# Build LIBRARY_RUN_FASTQS from annot
-LIBRARY_RUN_FASTQS = {}
-SAMPLE_METADATA = {}
+# Build SAMPLE_FASTQS from annot - aggregate all runs per sample
+SAMPLE_FASTQS = {}  # sample_name -> {"R1": [list], "R2": [list]}
+SAMPLE_METADATA = {}  # sample_name -> metadata
 
 for sample_run_id, row in annot.iterrows():
-    library = row['sample_name']
-    run = row['run']
+    sample_name = row['sample_name']
     
     # Get fastq paths (support both R1/R2 and fastq1/fastq2)
     if 'R1' in row and 'R2' in row:
@@ -168,41 +167,36 @@ for sample_run_id, row in annot.iterrows():
     else:
         raise ValueError(f"Sample {sample_run_id} missing R1/R2 or fastq1/fastq2 columns")
     
-    if library not in LIBRARY_RUN_FASTQS:
-        LIBRARY_RUN_FASTQS[library] = {}
-        SAMPLE_METADATA[library] = {}
+    if sample_name not in SAMPLE_FASTQS:
+        SAMPLE_FASTQS[sample_name] = {"R1": [], "R2": []}
+        SAMPLE_METADATA[sample_name] = {}
     
-    LIBRARY_RUN_FASTQS[library][run] = [str(fastq1), str(fastq2)]
+    # Collect all FASTQ files for this sample
+    SAMPLE_FASTQS[sample_name]["R1"].append(str(fastq1))
+    SAMPLE_FASTQS[sample_name]["R2"].append(str(fastq2))
     
-    # Store metadata
-    SAMPLE_METADATA[library][run] = {}
-    if 'ligation_site' in row and pd.notna(row['ligation_site']):
-        SAMPLE_METADATA[library][run]['ligation_site'] = str(row['ligation_site'])
-    if 'skip_ligation' in row and pd.notna(row['skip_ligation']):
-        SAMPLE_METADATA[library][run]['skip_ligation'] = bool(row['skip_ligation'])
+    # Store metadata (use first run's metadata or merge if needed)
+    if not SAMPLE_METADATA[sample_name]:
+        if 'ligation_site' in row and pd.notna(row['ligation_site']):
+            SAMPLE_METADATA[sample_name]['ligation_site'] = str(row['ligation_site'])
+        if 'skip_ligation' in row and pd.notna(row['skip_ligation']):
+            SAMPLE_METADATA[sample_name]['skip_ligation'] = bool(row['skip_ligation'])
+
+# Keep LIBRARY_RUN_FASTQS for backward compatibility with library_group logic
+# (library = sample_name in current implementation)
+LIBRARY_RUN_FASTQS = {sample: {"1": SAMPLE_FASTQS[sample]["R1"]} for sample in SAMPLE_FASTQS.keys()}
 
 # Automatically create library_groups if all_group is True
 if config["input"].get("all_group", False):
-    all_libraries = list(LIBRARY_RUN_FASTQS.keys())
+    all_samples = list(SAMPLE_FASTQS.keys())
     if "library_groups" not in config["input"]:
         config["input"]["library_groups"] = {}
-    config["input"]["library_groups"]["all"] = all_libraries
-    print(f"Auto-generated 'all' group with {len(all_libraries)} libraries: {all_libraries}")
+    config["input"]["library_groups"]["all"] = all_samples
+    print(f"Auto-generated 'all' group with {len(all_samples)} libraries: {all_samples}")
 
-runs = [list(LIBRARY_RUN_FASTQS[lib].keys()) for lib in LIBRARY_RUN_FASTQS.keys()]
-runs = [item for sublist in runs for item in sublist]
-
-# No chunking - treat each run as a single chunk named "raw"
-CHUNK_IDS = {
-    library: {run: ["raw"] for run in LIBRARY_RUN_FASTQS[library]}
-    for library in LIBRARY_RUN_FASTQS
-}
-all_chunk_ids = ["raw"]
-
-def get_raw_fastqs(wc):
-    """Return raw R1/R2 FASTQ paths for a given library/run."""
-    fastqs = LIBRARY_RUN_FASTQS[wc.library][wc.run]
-    return fastqs
+def get_sample_fastqs(wc):
+    """Return all R1/R2 FASTQ paths for a sample (all runs aggregated)."""
+    return SAMPLE_FASTQS[wc.sample]["R1"], SAMPLE_FASTQS[wc.sample]["R2"]
 
 min_resolution = min(config["bin"]["resolutions"])
 
@@ -211,7 +205,7 @@ library_scaling_pairs = []
 if "scaling_pairs" in config and config["scaling_pairs"].get("do", True):
     library_scaling_pairs = expand(
         f"{pairs_library_folder}/{{library}}.{assembly}.nodups.scaling.tsv",
-        library=LIBRARY_RUN_FASTQS.keys(),
+        library=SAMPLE_FASTQS.keys(),
     )
     if not config["scaling_pairs"].get("max_distance", False):
         chromsizes = pd.read_table(
@@ -222,19 +216,19 @@ if "scaling_pairs" in config and config["scaling_pairs"].get("do", True):
 # Setting up the library cooler outputs
 library_coolers = expand(
     f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{min_resolution}.mcool",
-    library=LIBRARY_RUN_FASTQS.keys(),
+    library=SAMPLE_FASTQS.keys(),
     filter_name=list(config["bin"]["filters"].keys()),
 )
 
 library_downstream_stat = expand(
     f"{downstream_dist_folder}/{{library}}.{{filter_name}}.{min_resolution}_loglog_fits.csv",
-    library=LIBRARY_RUN_FASTQS.keys(),
+    library=SAMPLE_FASTQS.keys(),
     filter_name=list(config["bin"]["filters"].keys()),
 )
 
 library_mustache_loops = expand(
     f"{downstream_loops_folder}/{{library}}.{{filter_name}}.{{resolution}}_loops.tsv",
-    library=LIBRARY_RUN_FASTQS.keys(),
+    library=SAMPLE_FASTQS.keys(),
     filter_name=list(config["bin"]["filters"].keys()),
     resolution=config["bin"]["resolution_for_mustache"],
 )
@@ -243,7 +237,7 @@ library_hic = []
 if config["bin"].get("make_hic", False):
     library_hic += expand(
         f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{min_resolution}.hic",
-        library=LIBRARY_RUN_FASTQS.keys(),
+        library=SAMPLE_FASTQS.keys(),
         filter_name=list(config["bin"]["filters"].keys()),
     )
 
@@ -270,12 +264,12 @@ if "library_groups" in config["input"] and len(config["input"]["library_groups"]
 
 assemble_mapstats = []
 assemble_pairstats = []
-for library in LIBRARY_RUN_FASTQS:
+for sample in SAMPLE_FASTQS.keys():
     assemble_mapstats.append(
-        f"{mapped_parsed_sorted_chunks_folder}/{library}/assemble.mapstat"
+        f"{mapped_parsed_sorted_chunks_folder}/{sample}.assemble.mapstat"
     )
     assemble_pairstats.append(
-        f"{mapped_parsed_sorted_chunks_folder}/{library}/assemble.pairstat"
+        f"{mapped_parsed_sorted_chunks_folder}/{sample}.assemble.pairstat"
     )
 
 multiqc = [f"{multiqc_folder}/multiqc_report.html"]
@@ -287,8 +281,8 @@ combined_hicproPairstats = f"{pairs_library_folder}/combined_hicpro_pairstats_su
 combined_stats = [combined_dedup_stats, combined_mapstats, combined_pairstats, combined_RSstats, combined_hicproPairstats]
 
 allvalidPair = []
-for library in LIBRARY_RUN_FASTQS:
-    allvalidPair.append(f"{pairs_library_folder}/{library}.allValidPairs")
+for sample in SAMPLE_FASTQS.keys():
+    allvalidPair.append(f"{pairs_library_folder}/{sample}.allValidPairs")
 
 # Some sanity checks - Phasing
 if config.get('phase', {}).get('do_phase', False):
@@ -320,7 +314,7 @@ if config.get('phase', {}).get('do_phase', False):
         )
 
 # List of all required outputs of the workflow
-rule default:
+rule all:
     input:
         library_group_coolers,
         library_group_hic,
@@ -335,16 +329,19 @@ rule default:
         library_downstream_stat,
         library_mustache_loops
 
+# Get all sample_run identifiers for wildcard constraints
+all_sample_runs = list(annot.index)
+
 # Global constraints on the wildcards
 wildcard_constraints:
-    library=f"({'|'.join([re.escape(lib) for lib in LIBRARY_RUN_FASTQS.keys()])})",
+    sample=f"({'|'.join([re.escape(s) for s in SAMPLE_FASTQS.keys()])})",
+    library=f"({'|'.join([re.escape(s) for s in SAMPLE_FASTQS.keys()])})",  # Keep library for backward compatibility
+    sample_run=f"({'|'.join([re.escape(sr) for sr in all_sample_runs])})",
     library_group=(
         f"({'|'.join([re.escape(lib) for lib in config['input']['library_groups'].keys()])})"
         if "library_groups" in config["input"]
         else ""
     ),
-    run=f"({'|'.join([re.escape(run) for run in runs])})",
-    chunk_id=f"({'|'.join(all_chunk_ids)})",
     resolution=f"({'|'.join([str(res) for res in config['bin']['resolutions']])})",
 
 # Depending on the mapper, the index files will be different
@@ -404,31 +401,3 @@ include: "rules/align.smk"
 include: "rules/hicpro_style.smk"
 include: "rules/cooltools.smk"
 include: "rules/downstream.smk"
-
-# If we keep bams, simply store the output in the folder, otherwise pipe it to pairtools parse
-if config["map"]["mapper"] in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
-    if config["parse"]["keep_unparsed_bams"]:
-        ruleorder: map_chunks_bwa > map_chunks_bwa_pipe
-    else:
-        ruleorder: map_chunks_bwa_pipe > map_chunks_bwa
-
-    use rule map_chunks_bwa as map_chunks_bwa_pipe with:
-        output:
-            pipe(
-                f"{mapped_parsed_sorted_chunks_folder}/{{library}}/{{run}}/{{chunk_id}}.bam"
-            ),
-
-rule merge_stats_libraries_into_groups:
-    input:
-        lambda wildcards: expand(
-            f"{pairs_library_folder}/{{library}}.{assembly}.dedup.stats",
-            library=config["input"]["library_groups"][wildcards.library_group],
-        ),
-    conda:
-        "envs/pairtools_cooler.yml"
-    log:
-        "logs/merge_stats_libraries_into_groups/{library_group}.log",
-    output:
-        f"{stats_library_group_folder}/{{library_group}}.{assembly}.stats",
-    shell:
-        r"pairtools stats --merge {input} -o {output} >{log[0]} 2>&1"

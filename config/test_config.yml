@@ -3,8 +3,6 @@
 project:
   name: hic_test
   genome: hg38
-  # Output directory (can use {process_dir} placeholder from PEP)
-  out_dir: "{process_dir}/20251017_hic_test"
   # PEP configuration file
   pep_config: "../pep/project_config.yaml"
   read_type: paired
@@ -137,7 +135,7 @@ bin:
 
 ##### OUTPUT DIRECTORIES #####
 
-output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20251212_hic_test'
+output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20260101_hic_test'
 
 output:
   dirs:
@@ -187,10 +185,3 @@ mustache:
     2000: "0.7"
     1000: "0.7"
 
-##### EXTERNAL SERVICES #####
-
-# ResGen upload configuration
-resgen:
-  upload: False
-  user: Gilbert
-  project: Macrophage_hic_test

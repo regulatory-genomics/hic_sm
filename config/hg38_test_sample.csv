@@ -1,2 +1,3 @@
 sample_name,run,R1,R2,ligation_site,skip_ligation
-test1,1,/storage/zhangkaiLab/hanlitian/macrophage/data/HiC/H5-10-test_R1.fastq.zst,/storage/zhangkaiLab/hanlitian/macrophage/data/HiC/H5-10-test_R2.fastq.zst,GATCGATC,false
+test1-1,1,/storage/zhangkaiLab/hanlitian/macrophage/data/HiC/H5-10-test_R1.fastq.zst,/storage/zhangkaiLab/hanlitian/macrophage/data/HiC/H5-10-test_R2.fastq.zst,GATCGATC,false
+test1-2,1,/storage/zhangkaiLab/hanlitian/macrophage/data/HiC/H5-10-test_R1.fastq.zst,/storage/zhangkaiLab/hanlitian/macrophage/data/HiC/H5-10-test_R2.fastq.zst,GATCGATC,false
