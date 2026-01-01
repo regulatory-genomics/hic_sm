@@ -52,10 +52,7 @@ if config["map"]["mapper"] in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
     rule map_chunks_bwa:
         input:
             reads=lambda wildcards: (
-                (
-                    [os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.sample}_1.fq.gz")],
-                    [os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.sample}_2.fq.gz")]
-                )
+                get_trimmed_runs_for_sample(wildcards)
                 if config["map"]["trim_options"]
                 else get_sample_fastqs(wildcards)
             ),
@@ -87,7 +84,7 @@ if config["map"]["mapper"] == "bowtie2":
     rule bowtie2_global_align:
         input:
             sample=lambda wildcards: (
-                [os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.sample}_{wildcards.side}.fq.gz")]
+                get_trimmed_runs_for_sample(wildcards, side=wildcards.side)
                 if config["map"]["trim_options"]
                 else get_sample_fastqs(wildcards)[int(wildcards.side)-1] if isinstance(get_sample_fastqs(wildcards)[int(wildcards.side)-1], list) else [get_sample_fastqs(wildcards)[int(wildcards.side)-1]]
             ),
@@ -101,7 +98,8 @@ if config["map"]["mapper"] == "bowtie2":
                 "-@ {threads} -bS -"  # Flags if skip_ligation is True
                 if SAMPLE_METADATA.get(wildcards.sample, {}).get('skip_ligation', False)
                 else "-F 4 -@ {threads} -bS -" # Default flags (not skipping ligation)
-            )
+            ),
+            input_files=lambda wildcards, input: ','.join(input.sample),
         threads: 8
         log:
             "logs/bowtie2_global/{sample}_{side}.log",
@@ -118,7 +116,7 @@ if config["map"]["mapper"] == "bowtie2":
             (bowtie2 {params.extra} \
                 -p {threads} \
                 -x "${{index_prefix}}" \
-                -U {','.join(input.sample)} \
+                -U {params.input_files} \
                 --un {output.unaligned} \
                 2> {log}) \
             | samtools view {params.samtools_flags} \
@@ -286,10 +284,7 @@ if config["map"]["mapper"] == "chromap":
     rule map_chunks_chromap:
         input:
             reads=lambda wildcards: (
-                [
-                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.sample}_1.fq.gz"),
-                    os.path.join(result_path, "middle_files", "trimmed", f"{wildcards.sample}_2.fq.gz"),
-                ]
+                get_trimmed_runs_for_sample(wildcards)
                 if config["map"]["trim_options"]
                 else get_sample_fastqs(wildcards)
             ),
@@ -297,6 +292,8 @@ if config["map"]["mapper"] == "chromap":
             idx=multiext(genome_path, ".chromap.index"),
         params:
             extra=config["map"].get("mapping_options", ""),
+            r1_files=lambda wildcards, input: ','.join(input.reads[0]) if isinstance(input.reads[0], list) else input.reads[0],
+            r2_files=lambda wildcards, input: ','.join(input.reads[1]) if isinstance(input.reads[1], list) else input.reads[1],
         threads: 8
         output:
             f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.{assembly}.pairs.gz",
@@ -314,8 +311,8 @@ if config["map"]["mapper"] == "chromap":
             r"""
             chromap -e 4 -q 1 --split-alignment --pairs -x {input.idx} -r {input.reference} \
             -t {threads} {params.extra} \
-            -1 {','.join(input.reads[0]) if isinstance(input.reads[0], list) else input.reads[0]} \
-            -2 {','.join(input.reads[1]) if isinstance(input.reads[1], list) else input.reads[1]} \
+            -1 {params.r1_files} \
+            -2 {params.r2_files} \
             -o /dev/stdout 2>{log} | \
             bgzip > {output} \
             """

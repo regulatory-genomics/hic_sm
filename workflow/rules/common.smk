@@ -34,6 +34,32 @@ def get_runs_for_sample(sample_name):
     return sample_runs if len(sample_runs) > 0 else []
 
 
+def get_trimmed_runs_for_sample(wildcards, side=None):
+    """Get all trimmed FASTQ files for a sample (all runs).
+    
+    Args:
+        wildcards: Snakemake wildcards object
+        side: Optional side (1 or 2) for paired-end reads. If None, returns both sides.
+    
+    Returns:
+        If side is specified: list of trimmed files for that side
+        If side is None: tuple of (r1_files, r2_files)
+    """
+    sample_runs = get_runs_for_sample(wildcards.sample)
+    if side is not None:
+        # Return files for specific side
+        return [os.path.join(result_path, "middle_files", "trimmed", f"{sample_run}_{side}.fq.gz") 
+                for sample_run in sample_runs]
+    else:
+        # Return both sides
+        r1_files = []
+        r2_files = []
+        for sample_run in sample_runs:
+            r1_files.append(os.path.join(result_path, "middle_files", "trimmed", f"{sample_run}_1.fq.gz"))
+            r2_files.append(os.path.join(result_path, "middle_files", "trimmed", f"{sample_run}_2.fq.gz"))
+        return r1_files, r2_files
+
+
 def get_samples_passing_qc():
     """Get sample names that have at least one run passing QC (passqc=1).
     If passqc column doesn't exist, returns all samples (default: all pass QC)."""
