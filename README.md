@@ -1,47 +1,109 @@
-# distiller-sm
+# HiC-sm
 
-## A modular Hi-C mapping pipeline for reproducible data analysis.
+A Snakemake workflow for processing Hi-C sequencing data from raw FASTQ files to analysis-ready contact matrices and downstream analyses.
 
-The `distiller` pipeline aims to provide the following functionality:
+## Overview
 
-- Align the sequences of Hi-C molecules to the reference genome
-- Parse .sam alignment and form files with Hi-C pairs
-- Filter PCR duplicates
-- Aggregate pairs into binned matrices of Hi-C interactions
+HiC-sm is a comprehensive, modular Snakemake pipeline designed for Hi-C data processing. It supports multiple alignment strategies, quality control, contact matrix generation, and downstream analyses including loop detection and distance-dependent contact analysis.
 
-### Installation
+## Features
 
-First, clone the repository:
+- **Multiple Alignment Strategies**: Supports BWA-MEM, BWA-MEM2, BWA-MEME, Bowtie2 (with rescue mapping), and Chromap
+- **Quality Control**: Integrated fastp for read trimming and MultiQC for comprehensive QC reporting
+- **Flexible Processing**: 
+  - Automatic aggregation of multiple runs per sample
+  - Support for paired-end and single-end reads
+  - Configurable ligation site handling
+- **Contact Matrix Generation**: 
+  - Cooler format (.mcool) with multiple resolutions
+  - Optional .hic format output
+  - Multiple filtering strategies
+- **Downstream Analysis**:
+  - Mustache loop detection
+  - Distance-dependent contact analysis
+  - Scaling analysis
+- **Modular Architecture**: Clean separation of concerns with domain-specific rule files
+- **PEP Integration**: Uses Portable Encapsulated Project (PEP) for sample metadata management
 
-`git clone https://github.com/open2c/distiller-sm.git`
+## Requirements
 
-The recommended way to get all the requirements is to create a conda environment using `workflow/envs/environment.yml`.
-We recommend using mamba to handle creation and modification of conda environments, like this:
+- **Snakemake** >= 8.20.1
+- **Conda** or **Mamba** for environment management
+- **Python** 3.11+
+- Genome reference files (FASTA, BWA/Bowtie2 indices, chromosome sizes)
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd hic_sm
 ```
-cd distiller-sm
-mamba env create -f workflow/envs/environment.yml
+
+2. Install Snakemake (if not already installed):
+```bash
+conda install -c conda-forge -c bioconda snakemake
+# or
+mamba install -c conda-forge -c bioconda snakemake
 ```
-Other than snakemake, it just installs sra-tools, needed to run the test.
-Feel free to simply install snakemake in any way you like.
 
-To check your installation, first run the workflow with a small test dataset.
+3. The workflow uses conda environments defined in `workflow/envs/`. These will be automatically created when you run the workflow.
+
+## Quick Start
+
+### 1. Prepare Sample Sheet
+
+Create a CSV file with sample information (see `config/hg38_test_sample.csv` for example):
+
+```csv
+sample_name,run,R1,R2,ligation_site,skip_ligation
+sample1,1,/path/to/sample1_R1.fastq.gz,/path/to/sample1_R2.fastq.gz,GATCGATC,false
+sample2,1,/path/to/sample2_R1.fastq.gz,/path/to/sample2_R2.fastq.gz,GATCGATC,false
 ```
-conda activate distiller-sm
-sh setup_test.sh
-snakemake --use-conda --cores $Ncores --configfile config/config.yml
+
+Required columns:
+- `sample_name`: Unique sample identifier
+- `run`: Run number (integer)
+- `R1`, `R2`: Paths to forward and reverse FASTQ files (or `fastq1`, `fastq2`)
+
+Optional columns:
+- `ligation_site`: Ligation site sequence (overrides config default)
+- `skip_ligation`: Boolean to skip ligation site processing
+- `passqc`: QC flag (1 = pass, 0 = fail)
+
+### 2. Configure Workflow
+
+Edit `config/test_config.yml` to set:
+- Genome assembly and reference paths
+- Mapper selection (`bwa-mem`, `bwa-mem2`, `bwa-meme`, `bowtie2`, `chromap`)
+- Output directories
+- Resolution bins
+- Filtering options
+
+### 3. Set Up PEP Configuration
+
+Configure your PEP project file (default: `pep/project_config.yaml`) to define:
+- Sample table path
+- Path variables (e.g., `database_dir`, `process_dir`)
+
+### 4. Run the Workflow
+
+Dry-run to check the workflow:
+```bash
+snakemake -n
 ```
-This will also create all required conda environments which will be reused in future runs of the same workflow.
 
-### Customization
+Execute the workflow:
+```bash
+snakemake --use-conda --cores <number_of_cores>
+```
 
-To setup a new project, modify the file `config/config.yml`.
+For cluster execution:
+```bash
+snakemake --use-conda --profile <profile> --cores <number_of_cores>
+```
 
-Other than your .fastq files, you'll need the sequence of your reference genome of choice and the chrom.sizes file. You need to specify the path to the basename of the bwa index (typially same as the path to the genome sequence, potentially without the extension), but `distiller-sm` can generate the index for you if it doesn't exist in the provided location.
 
-To start the workflow, run `snakemake --use-conda --cores $Ncores --configfile config/config.yml`.
+## Contributing
 
-#### Resources
-
-To modify resources used by specific jobs, you should edit the file workflow/profiles.default/config.yml, or write your own workflow profile and point to its folder in the above command with --profile <path> argument.
-
-See more information here: https://snakemake.readthedocs.io/en/stable/executing/cli.html#profiles
+Contributions are welcome! Please ensure code follows the modular structure and includes appropriate documentation.
