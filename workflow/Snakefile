@@ -48,6 +48,38 @@ library_mustache_loops = expand(
     resolution=config["bin"]["resolution_for_mustache"],
 )
 
+# Collect all report files
+library_report = []
+# Alignment statistics
+for sample in SAMPLE_FASTQS.keys():
+    if config["map"]["mapper"] == "bowtie2":
+        library_report.append(f"{outdir}/Report/align/{sample}.pairstat")
+        library_report.append(f"{outdir}/Report/align/{sample}_R1.mapstat")
+        library_report.append(f"{outdir}/Report/align/{sample}_R2.mapstat")
+# Pairs statistics (dedup stats linked to Report/pairtools)
+library_report += expand(
+    f"{outdir}/Report/pairtools/{{library}}.dedup.stats",
+    library=SAMPLE_FASTQS.keys(),
+)
+library_report += expand(
+    f"{outdir}/Report/Pairs/{{library}}.hicpro.RSstat",
+    library=SAMPLE_FASTQS.keys(),
+)
+# Scaling reports (if enabled)
+if "scaling_pairs" in config and config["scaling_pairs"].get("do", True):
+    library_report += expand(
+        f"{outdir}/Report/Pairs/{{library}}.nodups.scaling.tsv",
+        library=SAMPLE_FASTQS.keys(),
+    )
+# Library group statistics
+if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0:
+    library_report += expand(
+        f"{outdir}/Report/Pairs/{{library_group}}.stats",
+        library_group=config["input"]["library_groups"].keys(),
+    )
+# MultiQC report
+library_report.append(f"{outdir}/Report/multiqc_report.html")
+
 library_hic = []
 if config["bin"].get("make_hic", False):
     library_hic += expand(
@@ -114,6 +146,7 @@ rule all:
         # Conditional Outputs
         library_hic if config["bin"].get("make_hic", False) else [],
         library_scaling_pairs if config.get("scaling_pairs", {}).get("do", True) else [],
+        library_report,
         
         # Downstream
         library_mustache_loops,

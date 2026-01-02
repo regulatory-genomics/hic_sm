@@ -22,7 +22,7 @@ rule map2frag:
         fragments_file = config["parse"].get("fragment_file")
     output:
         validPairs=f"{outdir}/Important_processed/Pairs/{{sample}}.hicpro.validPairs",
-        validPairsRSstat = f"{outdir}/Important_processed/Report/pairs/{{sample}}.hicpro.RSstat",
+        validPairsRSstat = f"{outdir}/Report/Pairs/{{sample}}.hicpro.RSstat",
     threads: 4
     benchmark:
         "benchmarks/map2frag/{sample}.tsv"
@@ -37,6 +37,7 @@ rule map2frag:
             -r {input.bam} \
             -o $(dirname {output.validPairs}) \
             &> {log}
+        mv "$(dirname {output.validPairs})/{wildcards.sample}.hicpro.RSstat" "{output.validPairsRSstat}" 2>/dev/null || true
         """
 
 # Since there's only one chunk per sample, return single path

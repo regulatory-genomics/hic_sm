@@ -138,7 +138,11 @@ rule scaling_pairs_library:
         scaling=f"{outdir}/Report/Pairs/{{library}}.nodups.scaling.tsv",
     params:
         min_distance=config["scaling_pairs"]["min_distance"],
-        max_distance=config["scaling_pairs"]["max_distance"],
+        max_distance=lambda wildcards, input: (
+            pd.read_table(input.chromsizes, header=None, names=["chrom", "size"])["size"].max()
+            if config["scaling_pairs"]["max_distance"] is False
+            else config["scaling_pairs"]["max_distance"]
+        ),
         n_dist_bins_decade=config["scaling_pairs"]["n_dist_bins_decade"],
         extra=config["scaling_pairs"]["scaling_options"],
     threads: 4

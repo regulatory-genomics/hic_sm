@@ -130,3 +130,15 @@ rule merge_dedup:
     shell:
         r"{params.input_command}" + r"{params.phase_command}" + dedup_command + " >{log[0]} 2>&1"
 
+
+rule link_dedup_stats:
+    input:
+        dedup_stats=f"{outdir}/Important_processed/Pairs/{{library}}.dedup.stats",
+    output:
+        report_stats=f"{outdir}/Report/pairtools/{{library}}.dedup.stats",
+    shell:
+        r"""
+        mkdir -p $(dirname {output.report_stats})
+        ln -sf {input.dedup_stats} {output.report_stats}
+        """
+

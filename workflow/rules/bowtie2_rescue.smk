@@ -117,7 +117,7 @@ rule merge_global_local:
         get_merge_inputs 
     output:
         merged=f"{outdir}/Important_processed/Bam/{{sample}}_{{side}}.merged.bam",
-        mapstat=f"{outdir}/Important_processed/Report/align/{{sample}}_R{{side}}.mapstat",
+        mapstat=f"{outdir}/Report/align/{{sample}}_R{{side}}.mapstat",
     threads: 4
     log:
         "logs/merge_global_local/{sample}_{side}.log",
@@ -177,7 +177,7 @@ rule pair_rescue_reads:
         r2=f"{outdir}/Important_processed/Bam/{{sample}}_2.merged.bam",
     output:
         paired=f"{outdir}/Important_processed/Bam/{{sample}}.bam",
-        stats=f"{outdir}/Important_processed/Report/align/{{sample}}.pairstat",
+        stats=f"{outdir}/Report/align/{{sample}}.pairstat",
     params:
         min_mapq=config["map"].get("rescue_options", {}).get("min_mapq", 10),
     threads: 4
