@@ -1,9 +1,12 @@
-name: multiqc_env
 channels:
   - conda-forge
   - bioconda
   - nodefaults
 dependencies:
-  - python=3.11
+  - multiqc=1.32
+  - python=3.11.13
+  - setuptools=75.8.0
+  - pandas=2.2.3
+  - pip=25.0
   - pip:
-    - https://github.com/open2c/MultiQC/archive/refs/heads/pairtools-module.zip
+    - 'git+https://github.com/GilbertHan1011/multiomicQc'

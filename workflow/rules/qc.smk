@@ -42,7 +42,7 @@ rule multiqc:
     log:
         "logs/multiqc.log",
     params:
-        input_dirs=lambda wildcards, input: list(set([Path(f).parent for f in input])),
+        input_dirs=f"{outdir}/Report",
         outdir=f"{outdir}/Report",
     output:
         report=f"{outdir}/Report/multiqc_report.html",
