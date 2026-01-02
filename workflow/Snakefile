@@ -1,8 +1,9 @@
-# 1. Setup & Configuration (all logic moved to common.smk)
-include: "rules/common.smk"
+# 1. Setup & Configuration
+##### load config and sample annotation sheets FIRST #####
+configfile: os.path.join("config", "config.yml")
 
-localrules:
-    merge_stats_libraries_into_groups,
+# Now include common.smk which uses the config
+include: "rules/common.smk"
 
 # 2. Domain Logic (in dependency order)
 include: "rules/qc.smk"          # Fastp, MultiQC
@@ -108,7 +109,6 @@ if config["bin"].get("make_hic", False):
 # Setting up the library group cooler and group stats outputs
 library_group_coolers = []
 library_group_hic = []
-library_group_stats = []
 if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0:
     library_group_coolers = expand(
         f"{outdir}/Important_processed/Cooler/{{library_group}}.{{filter_name}}.{min_resolution}.mcool",
@@ -121,11 +121,6 @@ if "library_groups" in config["input"] and len(config["input"]["library_groups"]
             library_group=config["input"]["library_groups"].keys(),
             filter_name=list(config["bin"]["filters"].keys()),
         )
-    library_group_stats = expand(
-        f"{outdir}/Report/Pairs/{{library_group}}.stats",
-        library_group=config["input"]["library_groups"].keys(),
-    )
-
 multiqc = [f"{outdir}/Report/multiqc_report.html"]
 allvalidPair = []
 for sample in SAMPLE_FASTQS.keys():
@@ -148,7 +143,6 @@ rule all:
         library_coolers,
         library_group_coolers if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0 else [],
         library_group_hic if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0 and config["bin"].get("make_hic", False) else [],
-        library_group_stats if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0 else [],
         
         # Conditional Outputs
         library_hic if config["bin"].get("make_hic", False) else [],

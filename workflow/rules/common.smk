@@ -15,8 +15,7 @@ min_version("8.20.1")
 
 module_name = "hic_pipeline"
 
-##### load config and sample annotation sheets #####
-configfile: os.path.join("config", "test_config.yml")
+
 
 # --- Config & PEP Loading ---
 

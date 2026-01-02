@@ -70,6 +70,9 @@ rule mustache_loop_detection:
         prefix = "{library}.{filter_name}.{resolution}",
         out_dir = f"{outdir}/Important_processed/Loops"
     threads: 5
+    resources:
+        mem_mb= 100000,
+        time= "6:00:00"
     shell:
         r"""
         bash workflow/scripts/mustache_loop_detection.sh \

@@ -1,10 +1,10 @@
 ##### PROJECT IO #####
 
 project:
-  name: hic_test
+  name: hic
   genome: hg38
   # PEP configuration file
-  pep_config: "../pep/project_config_test.yaml"
+  pep_config: "../pep/project_config.yaml"
   read_type: paired
 
 ##### WORKFLOW RESOURCES #####
@@ -135,7 +135,7 @@ bin:
 
 ##### OUTPUT DIRECTORIES #####
 
-output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20260101_hic_test'
+output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20260102_hic_run'
 
 ##### DOWNSTREAM ANALYSIS #####
 

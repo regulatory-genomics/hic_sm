@@ -4,7 +4,7 @@ project_name: 20251212_hic_test
 
 description: "PEP definition for the Hi-C workflow."
 
-sample_table: ../config/20260102_hic_sample.csv
+sample_table: ../config/hg38_test_sample.csv
 
 # Project-level path variables
 # These can be referenced in config using {placeholder} syntax
