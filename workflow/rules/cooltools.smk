@@ -2,8 +2,10 @@
 
 rule bin_pairs_library:
     input:
-        pairs=f"{pairs_library_folder}/{{library}}.{assembly}.nodups.pairs.gz",
+        pairs=f"{outdir}/Important_processed/Pairs/{{library}}.nodups.pairs.gz",
         chromsizes=chromsizes_path,
+    output:
+        cool=f"{outdir}/Important_processed/Cooler/{{library}}.{{filter_name}}.{{min_resolution}}.cool",
     params:
         filter_command=lambda wildcards: (
             f'| pairtools select "{config["bin"]["filters"][wildcards.filter_name]}"'
@@ -14,8 +16,6 @@ rule bin_pairs_library:
     threads: 4
     conda:
         "../envs/pairtools_cooler.yml"
-    output:
-        cool=f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{{min_resolution}}.cool",
     log:
         "logs/bin_pairs_library/{library}.{filter_name}.{min_resolution}.log",
     benchmark:
@@ -30,7 +30,9 @@ rule bin_pairs_library:
 
 rule zoom_library:
     input:
-        cool=f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{{min_resolution}}.cool",
+        cool=f"{outdir}/Important_processed/Cooler/{{library}}.{{filter_name}}.{{min_resolution}}.cool",
+    output:
+        mcool=f"{outdir}/Important_processed/Cooler/{{library}}.{{filter_name}}.{{min_resolution}}.mcool",
     params:
         res_string=",".join([str(res) for res in config["bin"]["resolutions"]]),
         balance_args=lambda wildcards, threads: (
@@ -41,8 +43,6 @@ rule zoom_library:
     threads: 8
     conda:
         "../envs/pairtools_cooler.yml"
-    output:
-        mcool=f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{{min_resolution}}.mcool",
     log:
         "logs/zoom_library/{library}.{filter_name}.{min_resolution}.log",
     benchmark:
@@ -62,9 +62,14 @@ rule zoom_library:
 rule merge_zoom_library_group_coolers:
     input:
         lambda wildcards: expand(
-            f"{coolers_library_folder}/{{library}}.{assembly}.{wildcards.filter_name}.{wildcards.min_resolution}.cool",
+            f"{outdir}/Important_processed/Cooler/{{library}}.{{filter_name}}.{{min_resolution}}.cool",
             library=config["input"]["library_groups"][wildcards.library_group],
+            filter_name=wildcards.filter_name,
+            min_resolution=wildcards.min_resolution,
         ),
+    output:
+        cool=f"{outdir}/Important_processed/Cooler/{{library_group}}.{{filter_name}}.{{min_resolution}}.cool",
+        mcool=f"{outdir}/Important_processed/Cooler/{{library_group}}.{{filter_name}}.{{min_resolution}}.mcool",
     params:
         res_string=",".join([str(res) for res in config["bin"]["resolutions"]]),
         balance_args=lambda wildcards, threads: (
@@ -75,9 +80,6 @@ rule merge_zoom_library_group_coolers:
     threads: 8
     conda:
         "../envs/pairtools_cooler.yml"
-    output:
-        cool=f"{coolers_library_group_folder}/{{library_group}}.{assembly}.{{filter_name}}.{{min_resolution}}.cool",
-        mcool=f"{coolers_library_group_folder}/{{library_group}}.{assembly}.{{filter_name}}.{{min_resolution}}.mcool",
     log:
         "logs/merge_zoom_library_group_coolers/{library_group}.{filter_name}.{min_resolution}.log",
     benchmark:
@@ -98,9 +100,9 @@ rule merge_zoom_library_group_coolers:
 
 rule mcool2hic_group:
     input:
-        mcool=f"{coolers_library_group_folder}/{{library_group}}.{assembly}.{{filter_name}}.{{min_resolution}}.mcool",
+        mcool=f"{outdir}/Important_processed/Cooler/{{library_group}}.{{filter_name}}.{{min_resolution}}.mcool",
     output:
-        hic=f"{coolers_library_group_folder}/{{library_group}}.{assembly}.{{filter_name}}.{{min_resolution}}.hic",
+        hic=f"{outdir}/Important_processed/hic/{{library_group}}.{{filter_name}}.{{min_resolution}}.hic",
     log:
         "logs/mcool2hic/{library_group}.{filter_name}.{min_resolution}.log",
     benchmark:
@@ -109,7 +111,7 @@ rule mcool2hic_group:
         "../envs/hictk.yml"
     threads: 8
     params:
-        tmpdir=coolers_library_group_folder,
+        tmpdir=f"{outdir}/Important_processed/Cooler",
     shell:
         r"""
         hictk convert --threads {threads} --tmpdir {params.tmpdir} \
@@ -119,9 +121,9 @@ rule mcool2hic_group:
 
 use rule mcool2hic_group as mcool2hic_library with:
     input:
-        mcool=f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{{min_resolution}}.mcool",
+        mcool=f"{outdir}/Important_processed/Cooler/{{library}}.{{filter_name}}.{{min_resolution}}.mcool",
     output:
-        hic=f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{{min_resolution}}.hic",
+        hic=f"{outdir}/Important_processed/hic/{{library}}.{{filter_name}}.{{min_resolution}}.hic",
     log:
         "logs/mcool2hic/{library}.{filter_name}.{min_resolution}.log",
     benchmark:
@@ -130,8 +132,10 @@ use rule mcool2hic_group as mcool2hic_library with:
 
 rule scaling_pairs_library:
     input:
-        pairs=f"{pairs_library_folder}/{{library}}.{assembly}.nodups.pairs.gz",
+        pairs=f"{outdir}/Important_processed/Pairs/{{library}}.nodups.pairs.gz",
         chromsizes=chromsizes_path,
+    output:
+        scaling=f"{outdir}/Report/Pairs/{{library}}.nodups.scaling.tsv",
     params:
         min_distance=config["scaling_pairs"]["min_distance"],
         max_distance=config["scaling_pairs"]["max_distance"],
@@ -140,8 +144,6 @@ rule scaling_pairs_library:
     threads: 4
     conda:
         "../envs/pairtools_cooler.yml"
-    output:
-        scaling=f"{pairs_library_folder}/{{library}}.{assembly}.nodups.scaling.tsv",
     log:
         "logs/scaling_pairs_library/{library}.log",
     benchmark:
@@ -161,7 +163,7 @@ rule scaling_pairs_library:
 rule merge_stats_libraries_into_groups:
     input:
         lambda wildcards: expand(
-            f"{pairs_library_folder}/{{library}}.{assembly}.dedup.stats",
+            f"{outdir}/Important_processed/Pairs/{{library}}.dedup.stats",
             library=config["input"]["library_groups"][wildcards.library_group],
         ),
     conda:
@@ -169,6 +171,6 @@ rule merge_stats_libraries_into_groups:
     log:
         "logs/merge_stats_libraries_into_groups/{library_group}.log",
     output:
-        f"{stats_library_group_folder}/{{library_group}}.{assembly}.stats",
+        f"{outdir}/Report/Pairs/{{library_group}}.stats",
     shell:
         r"pairtools stats --merge {input} -o {output} >{log[0]} 2>&1"

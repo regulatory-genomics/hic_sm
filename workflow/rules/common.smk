@@ -136,22 +136,9 @@ samples = annot.reset_index().drop_duplicates(subset='sample_name', keep='first'
 
 # --- Path Definitions ---
 
-# Set up output directories - use DIRS dictionary for consistency
+# Set up output directories - define directly using output_base_dir
 result_path = config.get("output_base_dir", "results")
-DIRS = config["output"]["dirs"]
-DIRS['result_path'] = result_path
-
-# Individual path variables for backward compatibility
-processed_fastqs_folder = DIRS["processed_fastqs"]
-mapped_parsed_sorted_chunks_folder = DIRS["mapped_parsed_sorted_chunks"]
-pairs_runs_folder = DIRS["pairs_runs"]
-pairs_library_folder = DIRS["pairs_library"]
-coolers_library_folder = DIRS["coolers_library"]
-coolers_library_group_folder = DIRS["coolers_library_group"]
-stats_library_group_folder = DIRS["stats_library_group"]
-downstream_dist_folder = DIRS["downstream_dist_folder"]
-downstream_loops_folder = DIRS["downstream_loops_folder"]
-multiqc_folder = DIRS["multiqc"]
+outdir = result_path
 
 # Genome configuration
 assembly = config["input"]["genome"]["assembly_name"]

@@ -2,11 +2,11 @@
 
 rule parse_sort_chunks:
     input:
-        bam=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.bam",
+        bam=f"{outdir}/Important_processed/Bam/{{sample}}.bam",
         chromsizes=chromsizes_path,
     threads: 4
     params:
-        # keep_bams_command=f"| tee >(samtools view -bS > {mapped_parsed_sorted_chunks_folder}/{{sample}}.{assembly}.bam)"
+        # keep_bams_command=f"| tee >(samtools view -bS > {outdir}/Important_processed/Bam/{{sample}}.{assembly}.bam)"
         # if config["parse"]["keep_unparsed_bams"]
         # else "",
         dropsam_flag="" if config["parse"].get("make_pairsam", False) else "--drop-sam",
@@ -18,7 +18,7 @@ rule parse_sort_chunks:
     conda:
         "../envs/pairtools_cooler.yml"
     output:
-        f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.{assembly}.pairs.gz",
+        f"{outdir}/Important_processed/Pairs/{{sample}}.pairs.gz",
     benchmark:
         "benchmarks/parse_sort_chunks/{sample}.tsv"
     log:
@@ -36,7 +36,7 @@ rule parse_sort_chunks:
 
 # Since there's only one chunk per sample (no chunking), return single path
 def get_pair_chunks(wildcards):
-    return [f"{mapped_parsed_sorted_chunks_folder}/{wildcards.sample}.{assembly}.pairs.gz"]
+    return [f"{outdir}/Important_processed/Pairs/{wildcards.sample}.pairs.gz"]
 
 
 if config["parse"]["make_pairsam"]:
@@ -70,7 +70,7 @@ if config["parse"]["make_pairsam"]:
         + " && pairix {output[0]}"
     )
     merge_output = multiext(
-        f"{pairs_library_folder}/{{library}}.{assembly}",
+        f"{outdir}/Important_processed/Pairs/{{library}}",
         ".nodups.pairs.gz",
         ".nodups.bam",
         ".unmapped.pairs.gz",
@@ -99,7 +99,7 @@ else:
         + " >{log[0]} 2>&1 && pairix {output[0]}"
     )
     merge_output = multiext(
-        f"{pairs_library_folder}/{{library}}.{assembly}",
+        f"{outdir}/Important_processed/Pairs/{{library}}",
         ".nodups.pairs.gz",
         ".unmapped.pairs.gz",
         ".dups.pairs.gz",
@@ -107,12 +107,12 @@ else:
         ".nodups.pairs.gz.px2",
     )
 if config["dedup"].get("save_by_tile_dups", False):
-    merge_output += [f"{pairs_library_folder}/{{library}}.{assembly}.by_tile_dups.txt"]
+    merge_output += [f"{outdir}/Important_processed/Pairs/{{library}}.by_tile_dups.txt"]
 
 
 rule merge_dedup:
     input:
-        pairs=f"{mapped_parsed_sorted_chunks_folder}/{{library}}.{assembly}.pairs.gz",
+        pairs=f"{outdir}/Important_processed/Pairs/{{library}}.pairs.gz",
     params:
         dedup_options=get_dedup_options,
         max_mismatch_bp=config["dedup"]["max_mismatch_bp"],
@@ -130,8 +130,3 @@ rule merge_dedup:
     shell:
         r"{params.input_command}" + r"{params.phase_command}" + dedup_command + " >{log[0]} 2>&1"
 
-
-# balance_args = "--balance" if {config["bin"].get("balance", True)} else ""
-# balance_options = config["bin"].get("balance_options", "")
-# if balance_args and balance_options:
-#     balance_args = f"{balance_args} {balance_options}"

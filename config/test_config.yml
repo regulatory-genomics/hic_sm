@@ -137,20 +137,6 @@ bin:
 
 output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20260101_hic_test'
 
-output:
-  dirs:
-    downloaded_fastqs: '{output_base_dir}/refs/raw_fastq'
-    processed_fastqs: '{output_base_dir}/middle_file/Trimmed_fastq'
-    mapped_parsed_sorted_chunks: '{output_base_dir}/Important_processed/Bam'
-    pairs_runs: '{output_base_dir}/Important_processed/Track/pairs_runs'
-    pairs_library: '{output_base_dir}/Important_processed/Track/pairs_library'
-    coolers_library: '{output_base_dir}/Important_processed/Track/coolers_library'
-    coolers_library_group: '{output_base_dir}/Important_processed/Track/coolers_library_group'
-    stats_library_group: '{output_base_dir}/downstream_res/stats_library_group'
-    downstream_dist_folder: '{output_base_dir}/downstream_res/downstream_dist'
-    downstream_loops_folder: '{output_base_dir}/Important_processed/Peaks'
-    multiqc: '{output_base_dir}/Report'
-
 ##### DOWNSTREAM ANALYSIS #####
 
 # Mustache loop detection configuration

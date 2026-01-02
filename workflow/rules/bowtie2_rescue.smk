@@ -6,8 +6,8 @@ rule bowtie2_global_align:
         sample=get_input_reads_for_side,
         idx=idx,
     output:
-        bam=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.global.bam",
-        unaligned=temp(f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.global.unmap.fastq"),
+        bam=f"{outdir}/Important_processed/Bam/{{sample}}_{{side}}.global.bam",
+        unaligned=temp(f"{outdir}/Important_processed/Bam/{{sample}}_{{side}}.global.unmap.fastq"),
     params:
         extra=config["map"].get("rescue_options", {}).get("global_extra", "--very-sensitive -L 30 --score-min L,-0.6,-0.2 --end-to-end --reorder"),
         samtools_flags=get_samtools_flags,
@@ -39,9 +39,9 @@ rule bowtie2_global_align:
 # Step 2: Cutsite trimming for unmapped reads
 rule cutsite_trim:
     input:
-        fastq=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.global.unmap.fastq",
+        fastq=f"{outdir}/Important_processed/Bam/{{sample}}_{{side}}.global.unmap.fastq",
     output:
-        fastq=temp(f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.trimmed.fastq"),
+        fastq=temp(f"{outdir}/Important_processed/Bam/{{sample}}_{{side}}.trimmed.fastq"),
     params:
         cutsite=get_cutsite,
     log:
@@ -57,10 +57,10 @@ rule cutsite_trim:
 # Step 3: Local alignment for trimmed reads
 rule bowtie2_local_align:
     input:
-        sample=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.trimmed.fastq",
+        sample=f"{outdir}/Important_processed/Bam/{{sample}}_{{side}}.trimmed.fastq",
         idx=idx,
     output:
-        bam=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.local.bam",
+        bam=f"{outdir}/Important_processed/Bam/{{sample}}_{{side}}.local.bam",
     params:
         extra=config["map"].get("rescue_options", {}).get("local_extra", "--very-sensitive -L 20 --score-min L,-0.6,-0.2 --end-to-end --reorder"),
     threads: 8
@@ -98,13 +98,13 @@ def get_merge_inputs(wildcards):
 
     # Start with the global_bam, which is always required
     input_files = [
-        f"{mapped_parsed_sorted_chunks_folder}/{wildcards.sample}_{wildcards.side}.global.bam"
+        f"{outdir}/Important_processed/Bam/{wildcards.sample}_{wildcards.side}.global.bam"
     ]
 
     # If we are NOT skipping ligation, add the local_bam
     if not skip_ligation:
         input_files.append(
-            f"{mapped_parsed_sorted_chunks_folder}/{wildcards.sample}_{wildcards.side}.local.bam"
+            f"{outdir}/Important_processed/Bam/{wildcards.sample}_{wildcards.side}.local.bam"
         )
 
     # Return the list of files
@@ -116,8 +116,8 @@ rule merge_global_local:
     input:
         get_merge_inputs 
     output:
-        merged=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.merged.bam",
-        mapstat=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_{{side}}.mapstat",
+        merged=f"{outdir}/Important_processed/Bam/{{sample}}_{{side}}.merged.bam",
+        mapstat=f"{outdir}/Important_processed/Report/align/{{sample}}_R{{side}}.mapstat",
     threads: 4
     log:
         "logs/merge_global_local/{sample}_{side}.log",
@@ -173,11 +173,11 @@ rule merge_global_local:
 # Step 5: Pair R1 and R2 reads using mergeSAM.py
 rule pair_rescue_reads:
     input:
-        r1=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_1.merged.bam",
-        r2=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}_2.merged.bam",
+        r1=f"{outdir}/Important_processed/Bam/{{sample}}_1.merged.bam",
+        r2=f"{outdir}/Important_processed/Bam/{{sample}}_2.merged.bam",
     output:
-        paired=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.bam",
-        stats=f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.pairstat",
+        paired=f"{outdir}/Important_processed/Bam/{{sample}}.bam",
+        stats=f"{outdir}/Important_processed/Report/align/{{sample}}.pairstat",
     params:
         min_mapq=config["map"].get("rescue_options", {}).get("min_mapq", 10),
     threads: 4
@@ -188,6 +188,7 @@ rule pair_rescue_reads:
     shell:
         r"""
         python workflow/scripts/mergeSAM.py -v -t -q {params.min_mapq} -f {input.r1} -r {input.r2} -o {output.paired} >{log} 2>&1
-        rm "{mapped_parsed_sorted_chunks_folder}/{wildcards.sample}_1"*.bam "{mapped_parsed_sorted_chunks_folder}/{wildcards.sample}_2"*.bam
+        mv "{outdir}/Important_processed/Bam/{wildcards.sample}.pairstat" "{output.stats}" 2>/dev/null || true
+        rm "{outdir}/Important_processed/Bam/{wildcards.sample}_1"*.bam "{outdir}/Important_processed/Bam/{wildcards.sample}_2"*.bam
         """
 

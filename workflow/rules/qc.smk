@@ -28,11 +28,11 @@ rule fastp:
 rule multiqc:
     input:
         expand(
-            f"{pairs_library_folder}/{{library}}.{assembly}.dedup.stats",
+            f"{outdir}/Important_processed/Pairs/{{library}}.dedup.stats",
             library=SAMPLE_FASTQS.keys(),
         ),
         expand(
-            f"{stats_library_group_folder}/{{library_group}}.{assembly}.stats",
+            f"{outdir}/Report/Pairs/{{library_group}}.stats",
             library_group=config["input"]["library_groups"].keys(),
         )
         if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0
@@ -43,9 +43,9 @@ rule multiqc:
         "logs/multiqc.log",
     params:
         input_dirs=lambda wildcards, input: list(set([Path(f).parent for f in input])),
-        outdir=multiqc_folder,
+        outdir=f"{outdir}/Report",
     output:
-        report=f"{multiqc_folder}/multiqc_report.html",
+        report=f"{outdir}/Report/multiqc_report.html",
     shell:
         r"""multiqc -f --outdir {params.outdir} {params.input_dirs} \
         >{log} 2>&1"""

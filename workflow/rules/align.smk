@@ -65,7 +65,7 @@ if MAPPER in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
             r2_cmd=lambda wildcards, input: " ".join(input.reads[1]) if isinstance(input.reads[1], list) else input.reads[1],
         threads: 4
         output:
-            f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.bam",
+            f"{outdir}/Important_processed/Bam/{{sample}}.bam",
         log:
             "logs/bwa_memx/{sample}.log",
         benchmark:
@@ -98,7 +98,7 @@ if MAPPER == "chromap":
             r2_files=lambda wildcards, input: ','.join(input.reads[1]) if isinstance(input.reads[1], list) else input.reads[1],
         threads: 8
         output:
-            f"{mapped_parsed_sorted_chunks_folder}/{{sample}}.{assembly}.pairs.gz",
+            f"{outdir}/Important_processed/Pairs/{{sample}}.{assembly}.pairs.gz",
         log:
             "logs/chromap/{sample}.log",
         benchmark:

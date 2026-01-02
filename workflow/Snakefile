@@ -11,7 +11,6 @@ include: "rules/pairtools.smk"    # Pairtools
 include: "rules/hicpro_style.smk" # HiC-Pro style processing
 include: "rules/cooltools.smk"    # Cooler generation
 include: "rules/downstream.smk"   # Downstream analysis
-include: "rules/report.smk"       # Stats compilation
 
 # 3. Output Definitions
 # Note: min_resolution is defined in common.smk
@@ -20,7 +19,7 @@ include: "rules/report.smk"       # Stats compilation
 library_scaling_pairs = []
 if "scaling_pairs" in config and config["scaling_pairs"].get("do", True):
     library_scaling_pairs = expand(
-        f"{pairs_library_folder}/{{library}}.{assembly}.nodups.scaling.tsv",
+        f"{outdir}/Report/Pairs/{{library}}.nodups.scaling.tsv",
         library=SAMPLE_FASTQS.keys(),
     )
     if not config["scaling_pairs"].get("max_distance", False):
@@ -31,19 +30,19 @@ if "scaling_pairs" in config and config["scaling_pairs"].get("do", True):
 
 # Setting up the library cooler outputs
 library_coolers = expand(
-    f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{min_resolution}.mcool",
+    f"{outdir}/Important_processed/Cooler/{{library}}.{{filter_name}}.{min_resolution}.mcool",
     library=SAMPLE_FASTQS.keys(),
     filter_name=list(config["bin"]["filters"].keys()),
 )
 
 library_downstream_stat = expand(
-    f"{downstream_dist_folder}/{{library}}.{{filter_name}}.{min_resolution}_loglog_fits.csv",
+    f"{outdir}/downstream_res/downstream_dist/{{library}}.{{filter_name}}.{min_resolution}_loglog_fits.csv",
     library=SAMPLE_FASTQS.keys(),
     filter_name=list(config["bin"]["filters"].keys()),
 )
 
 library_mustache_loops = expand(
-    f"{downstream_loops_folder}/{{library}}.{{filter_name}}.{{resolution}}_loops.tsv",
+    f"{outdir}/Important_processed/Loops/{{library}}.{{filter_name}}.{{resolution}}_loops.tsv",
     library=SAMPLE_FASTQS.keys(),
     filter_name=list(config["bin"]["filters"].keys()),
     resolution=config["bin"]["resolution_for_mustache"],
@@ -52,7 +51,7 @@ library_mustache_loops = expand(
 library_hic = []
 if config["bin"].get("make_hic", False):
     library_hic += expand(
-        f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{min_resolution}.hic",
+        f"{outdir}/Important_processed/hic/{{library}}.{{filter_name}}.{min_resolution}.hic",
         library=SAMPLE_FASTQS.keys(),
         filter_name=list(config["bin"]["filters"].keys()),
     )
@@ -63,18 +62,18 @@ library_group_hic = []
 library_group_stats = []
 if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0:
     library_group_coolers = expand(
-        f"{coolers_library_group_folder}/{{library_group}}.{assembly}.{{filter_name}}.{min_resolution}.mcool",
+        f"{outdir}/Important_processed/Cooler/{{library_group}}.{{filter_name}}.{min_resolution}.mcool",
         library_group=config["input"]["library_groups"].keys(),
         filter_name=list(config["bin"]["filters"].keys()),
     )
     if config["bin"].get("make_hic", False):
         library_group_hic = expand(
-            f"{coolers_library_group_folder}/{{library_group}}.{assembly}.{{filter_name}}.{min_resolution}.hic",
+            f"{outdir}/Important_processed/hic/{{library_group}}.{{filter_name}}.{min_resolution}.hic",
             library_group=config["input"]["library_groups"].keys(),
             filter_name=list(config["bin"]["filters"].keys()),
         )
     library_group_stats = expand(
-        f"{stats_library_group_folder}/{{library_group}}.{assembly}.stats",
+        f"{outdir}/Report/Pairs/{{library_group}}.stats",
         library_group=config["input"]["library_groups"].keys(),
     )
 
@@ -82,23 +81,16 @@ assemble_mapstats = []
 assemble_pairstats = []
 for sample in SAMPLE_FASTQS.keys():
     assemble_mapstats.append(
-        f"{mapped_parsed_sorted_chunks_folder}/{sample}.assemble.mapstat"
+        f"{outdir}/Important_processed/Bam/{sample}.assemble.mapstat"
     )
     assemble_pairstats.append(
-        f"{mapped_parsed_sorted_chunks_folder}/{sample}.assemble.pairstat"
+        f"{outdir}/Important_processed/Bam/{sample}.assemble.pairstat"
     )
 
-multiqc = [f"{multiqc_folder}/multiqc_report.html"]
-combined_dedup_stats = f"{pairs_library_folder}/combined_dedup_stats_summary.tsv"
-combined_mapstats = f"{pairs_library_folder}/combined_mapstats_summary.tsv"
-combined_pairstats = f"{pairs_library_folder}/combined_pairstats_summary.tsv"
-combined_RSstats = f"{pairs_library_folder}/combined_RSstats_summary.tsv"
-combined_hicproPairstats = f"{pairs_library_folder}/combined_hicpro_pairstats_summary.tsv"
-combined_stats = [combined_dedup_stats, combined_mapstats, combined_pairstats, combined_RSstats, combined_hicproPairstats]
-
+multiqc = [f"{outdir}/Report/multiqc_report.html"]
 allvalidPair = []
 for sample in SAMPLE_FASTQS.keys():
-    allvalidPair.append(f"{pairs_library_folder}/{sample}.allValidPairs")
+    allvalidPair.append(f"{outdir}/Important_processed/Pairs/{sample}.hicpro.validPairs")
 
 # Rule order for mapper-specific dependencies
 if config["map"]["mapper"] == "chromap":
@@ -113,9 +105,6 @@ rule all:
     input:
         # QC & Stats
         multiqc,
-        combined_stats,
-        assemble_mapstats,
-        
         # Core Outputs
         library_coolers,
         library_group_coolers if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0 else [],

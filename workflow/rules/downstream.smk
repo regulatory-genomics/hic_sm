@@ -1,10 +1,10 @@
 rule dist_vs_contact:
     input:
-        mcool=f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{{min_resolution}}.mcool",
+        mcool=f"{outdir}/Important_processed/Cooler/{{library}}.{{filter_name}}.{{min_resolution}}.mcool",
     output:
-        dist_stat = f"{downstream_dist_folder}/{{library}}.{{filter_name}}.{{min_resolution}}_loglog_fits.csv",
-        pic1 = f"{downstream_dist_folder}/{{library}}.{{filter_name}}.{{min_resolution}}_hexbin_all_arms.png",
-        pic2 = f"{downstream_dist_folder}/{{library}}.{{filter_name}}.{{min_resolution}}_per_arm.png"
+        dist_stat = f"{outdir}/downstream_res/downstream_dist/{{library}}.{{filter_name}}.{{min_resolution}}_loglog_fits.csv",
+        pic1 = f"{outdir}/downstream_res/downstream_dist/{{library}}.{{filter_name}}.{{min_resolution}}_hexbin_all_arms.png",
+        pic2 = f"{outdir}/downstream_res/downstream_dist/{{library}}.{{filter_name}}.{{min_resolution}}_per_arm.png"
     log:
         "logs/downstream_dist/{library}.{filter_name}.{min_resolution}.log",
     benchmark:
@@ -13,7 +13,7 @@ rule dist_vs_contact:
         "../envs/downstream_plot.yml"
     params:
         genome = config["input"]["genome"]["assembly_name"],
-        out_dir = downstream_dist_folder
+        out_dir = f"{outdir}/downstream_res/downstream_dist"
     threads: 8
     shell:
         r"""
@@ -25,9 +25,9 @@ rule dist_vs_contact:
 
 rule mustache_loop_detection:
     input:
-        mcool=f"{coolers_library_folder}/{{library}}.{assembly}.{{filter_name}}.{min_resolution}.mcool",
+        mcool=f"{outdir}/Important_processed/Cooler/{{library}}.{{filter_name}}.{min_resolution}.mcool",
     output:
-        loops = f"{downstream_loops_folder}/{{library}}.{{filter_name}}.{{resolution}}_loops.tsv"
+        loops = f"{outdir}/Important_processed/Loops/{{library}}.{{filter_name}}.{{resolution}}_loops.tsv"
     log:
         "logs/downstream_loops/{library}.{filter_name}.{resolution}.log",
     benchmark:
@@ -39,7 +39,7 @@ rule mustache_loop_detection:
         sparse = lambda wildcards: config["mustache"]["sparse_params"].get(wildcards.resolution, "0.88"),
         mustache_path = "workflow/scripts/mustache.py",
         prefix = "{library}.{filter_name}.{resolution}",
-        out_dir = downstream_loops_folder
+        out_dir = f"{outdir}/Important_processed/Loops"
     threads: 5
     shell:
         r"""
