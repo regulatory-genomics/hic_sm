@@ -127,6 +127,9 @@ rule merge_dedup:
         "logs/merge_dedup/{library}.log",
     benchmark:
         "benchmarks/merge_dedup/{library}.tsv"
+    resources:
+        mem_mb= 20000,
+        runtime= 120,
     shell:
         r"{params.input_command}" + r"{params.phase_command}" + dedup_command + " >{log[0]} 2>&1"
 

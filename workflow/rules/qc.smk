@@ -16,8 +16,8 @@ rule fastp:
     conda:
         "../envs/fastp.yml"
     resources:
-        mem_mb=16000,
-        runtime=60,
+        mem_mb=8000,
+        runtime=120,
     log:
         "logs/rules/fastp/{sample_run}.fastp.log"
     threads: 4
@@ -27,16 +27,32 @@ rule fastp:
 
 rule multiqc:
     input:
-        expand(
+        dedup_stats=expand(
             f"{outdir}/Important_processed/Pairs/{{library}}.dedup.stats",
             library=SAMPLE_FASTQS.keys(),
         ),
-        expand(
-            f"{outdir}/Report/Pairs/{{library_group}}.stats",
-            library_group=config["input"]["library_groups"].keys(),
-        )
-        if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0
-        else [],
+        complexity=expand(
+            f"{outdir}/Report/pairtools/{{library}}.complexity.tsv",
+            library=SAMPLE_FASTQS.keys(),
+        ),
+        dist_contact=expand(
+            f"{outdir}/Report/downstream/{{library}}.{{filter_name}}.{min_resolution}_loglog_fits.csv",
+            library=SAMPLE_FASTQS.keys(),
+            filter_name=list(config["bin"]["filters"].keys()),
+        ),
+        loop_counts=expand(
+            f"{outdir}/Report/downstream/{{library}}.{{filter_name}}.loop_counts.tsv",
+            library=SAMPLE_FASTQS.keys(),
+            filter_name=list(config["bin"]["filters"].keys()),
+        ),
+        hicpro_rsstat=expand(
+            f"{outdir}/Report/Pairs/{{library}}.hicpro.RSstat",
+            library=SAMPLE_FASTQS.keys(),
+        ),
+        scaling=expand(
+            f"{outdir}/Report/Pairs/{{library}}.nodups.scaling.tsv",
+            library=SAMPLE_FASTQS.keys(),
+        ) if "scaling_pairs" in config and config["scaling_pairs"].get("do", True) else [],
     conda:
         "../envs/multiqc.yml"
     log:

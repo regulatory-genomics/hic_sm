@@ -19,7 +19,7 @@ rule bowtie2_global_align:
     threads: 20
     resources:
         mem_mb= 10000,
-        time= "6:00:00"
+        runtime= 1200
     log:
         "logs/bowtie2_global/{sample}_{side}.log",
     benchmark:
@@ -75,7 +75,7 @@ rule bowtie2_local_align:
     threads: 20
     resources:
         mem_mb= 10000,
-        time= "6:00:00"
+        runtime= 1200
     log:
         "logs/bowtie2_local/{sample}_{side}.log",
     benchmark:
@@ -132,6 +132,8 @@ rule merge_global_local:
         "logs/merge_global_local/{sample}_{side}.log",
     wildcard_constraints:
         side="[12]"
+    resources:
+        mem_mb= 20000,
     params:
         num_inputs=lambda wildcards, input: len(input) if isinstance(input, list) else 1,
         prefix=lambda wildcards, output: str(output.merged).replace('.merged.bam', ''),

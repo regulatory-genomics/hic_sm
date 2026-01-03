@@ -71,8 +71,8 @@ rule mustache_loop_detection:
         out_dir = f"{outdir}/Important_processed/Loops"
     threads: 5
     resources:
-        mem_mb= 100000,
-        time= "6:00:00"
+        mem_mb= 40000,
+        runtime= 600
     shell:
         r"""
         bash workflow/scripts/mustache_loop_detection.sh \

@@ -78,6 +78,9 @@ rule merge_zoom_library_group_coolers:
             else ""
         ),
     threads: 8
+    resources:
+        mem_mb= 20000,
+        runtime= 180,
     conda:
         "../envs/pairtools_cooler.yml"
     log:
@@ -163,18 +166,3 @@ rule scaling_pairs_library:
         >{log[0]} 2>&1
         """
 
-
-rule merge_stats_libraries_into_groups:
-    input:
-        lambda wildcards: expand(
-            f"{outdir}/Important_processed/Pairs/{{library}}.dedup.stats",
-            library=config["input"]["library_groups"][wildcards.library_group],
-        ),
-    conda:
-        "../envs/pairtools_cooler.yml"
-    log:
-        "logs/merge_stats_libraries_into_groups/{library_group}.log",
-    output:
-        f"{outdir}/Report/Pairs/{{library_group}}.stats",
-    shell:
-        r"pairtools stats --merge {input} -o {output} >{log[0]} 2>&1"

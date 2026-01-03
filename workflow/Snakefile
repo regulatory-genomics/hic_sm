@@ -89,12 +89,7 @@ if "scaling_pairs" in config and config["scaling_pairs"].get("do", True):
         f"{outdir}/Report/Pairs/{{library}}.nodups.scaling.tsv",
         library=SAMPLE_FASTQS.keys(),
     )
-# Library group statistics
-if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0:
-    library_report += expand(
-        f"{outdir}/Report/Pairs/{{library_group}}.stats",
-        library_group=config["input"]["library_groups"].keys(),
-    )
+
 # MultiQC report
 library_report.append(f"{outdir}/Report/multiqc_report.html")
 

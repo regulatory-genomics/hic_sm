@@ -8,8 +8,8 @@ default-resources:
   slurm_partition: "intel-sc3"     # CHANGE THIS: Use 'sinfo' to find your default partition
   slurm_qos: "huge"
   qos: "huge"
-  runtime: 60                 # Default time in minutes (1 hour)
-  mem_mb: 4000                # Default memory (4GB)
+  runtime: 180                 # Default time in minutes (1 hour)
+  mem_mb: 16000                # Default memory (4GB)
   slurm_account: "zhangkai" # Optional: if your cluster requires account tracking
 
 set-threads:
