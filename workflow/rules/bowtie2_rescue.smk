@@ -75,7 +75,7 @@ rule bowtie2_local_align:
     threads: 20
     resources:
         mem_mb= 10000,
-        runtime= 1200
+        runtime= 1800
     log:
         "logs/bowtie2_local/{sample}_{side}.log",
     benchmark:

@@ -136,8 +136,6 @@ rule all:
         multiqc,
         # Core Outputs
         library_coolers,
-        library_group_coolers if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0 else [],
-        library_group_hic if "library_groups" in config["input"] and len(config["input"]["library_groups"]) > 0 and config["bin"].get("make_hic", False) else [],
         
         # Conditional Outputs
         library_hic if config["bin"].get("make_hic", False) else [],

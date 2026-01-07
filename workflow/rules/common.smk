@@ -75,8 +75,10 @@ annot = pep_project.sample_table.copy()
 # Explode list-valued columns if any
 list_cols = [col for col in annot.columns if annot[col].apply(lambda x: isinstance(x, list)).any()]
 if list_cols:
-    for col in list_cols:
-        annot = annot.explode(col, ignore_index=True)
+    # Explode all list columns simultaneously to preserve index alignment
+    # This prevents Cartesian product issues when multiple columns contain lists
+    # (e.g., when run=[1,2] and R1=[fileA,fileB] should stay paired as run=1->fileA, run=2->fileB)
+    annot = annot.explode(list_cols, ignore_index=True)
 
 # Remove duplicate (sample_name, run) pairs
 if 'sample_name' in annot.columns and 'run' in annot.columns:

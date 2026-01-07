@@ -30,6 +30,8 @@ rule map2frag:
         "logs/map2frag/{sample}.log",
     conda:
         "../envs/hic2frag.yml"
+    resources:
+        runtime= 600,
     shell:
         """
         python workflow/scripts/mapped_2hic_fragments.py \
