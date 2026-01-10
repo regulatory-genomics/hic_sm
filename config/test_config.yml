@@ -20,7 +20,7 @@ input:
   genome:
     assembly_name: 'hg38'
     fasta: "{database_dir}/hg38/hg38.fa"
-    bwa_index_wildcard_path: '{database_dir}/hg38/GRCh38.primary_assembly.genome.fa.gz'
+    bwa_index_wildcard_path: '/storage/zhangkaiLab/shared/genomes/GRCh38/bwa-mem2/GRCh38'
     bowtie_index_path: "{database_dir}/hg38/indices_for_Bowtie2/hg38"
     chrom_sizes_path: '{database_dir}/hg38/hg38.chromSizes'
   
@@ -30,10 +30,8 @@ input:
 ##### ALIGNMENT STRATEGY #####
 
 map:
-  mapper: 'bowtie2'  # Options: 'bwa-mem', 'bwa-mem2', 'bwa-meme', 'chromap', 'bowtie2'
-  
-  # No chunking - process each run as a single unit
-  chunksize: 0
+  mapper: 'bwa-mem2'  # Options:  'bwa-mem2', 'bowtie2'
+  build_bwa_index: false
   
   # Mapper-specific options
   mapping_options: ''
@@ -52,6 +50,12 @@ map:
   trim_options: '--detect_adapter_for_pe -q 15'
   
   use_custom_split: True
+  use_stitch_cut: true     # <<< turn on stitch_cut.smk
+  stitch_cut:
+    min_overlap: 10        # FLASH2 params (optional, defaults already exist)
+    max_overlap: 150
+    min_ratio: 0.5         # sam2pairs params (optional)
+    min_mapq: 10
 
 ##### PARSING & PAIR GENERATION #####
 
@@ -135,7 +139,7 @@ bin:
 
 ##### OUTPUT DIRECTORIES #####
 
-output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20260101_hic_test'
+output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20260109_hic_test_stitch'
 
 ##### DOWNSTREAM ANALYSIS #####
 

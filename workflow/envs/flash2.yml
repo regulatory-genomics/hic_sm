@@ -1,0 +1,9 @@
+name: flash2
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - flash=1.2.11
+  - gzip
+

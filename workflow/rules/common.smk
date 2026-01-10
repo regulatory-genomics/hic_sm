@@ -20,7 +20,7 @@ module_name = "hic_pipeline"
 # --- Config & PEP Loading ---
 
 # Load PEP project to get sample metadata
-pep_config_value = config.get("pep_config", os.path.join("pep", "project_config.yaml"))
+pep_config_value = config.get("pep_config", os.path.join("pep", "project_config_test.yaml"))
 # Resolve PEP path; if relative, treat it as relative to the repo root (one level above workflow/)
 if os.path.isabs(pep_config_value):
     pep_config_path = pep_config_value
@@ -143,24 +143,23 @@ outdir = result_path
 
 # Genome configuration
 assembly = config["input"]["genome"]["assembly_name"]
-genome_path = config["input"]["genome"]["bwa_index_wildcard_path"].rstrip("*")
+genome_path = config["input"]["genome"]["fasta"]
+bwa_index_path = config["input"]["genome"]["bwa_index_wildcard_path"].rstrip("*")
 bowtie_index_path = config["input"]["genome"]["bowtie_index_path"].rstrip("*")
 chromsizes_path = config["input"]["genome"]["chrom_sizes_path"]
 
 # Define index targets based on mapper
 MAPPER = config["map"]["mapper"]
-if MAPPER == "bwa-mem":
-    idx = multiext(
-        genome_path,
-        ".amb",
-        ".ann",
-        ".bwt",
-        ".pac",
-        ".sa",
+
+# Only allow bwa-mem2 or bowtie2
+if MAPPER not in ["bwa-mem2", "bowtie2"]:
+    raise ValueError(
+        f"config['map']['mapper'] must be 'bwa-mem2' or 'bowtie2', not '{MAPPER}'"
     )
-elif MAPPER == "bwa-mem2":
+
+if MAPPER == "bwa-mem2":
     idx = multiext(
-        genome_path,
+        bwa_index_path,
         ".0123",
         ".amb",
         ".ann",

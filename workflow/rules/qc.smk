@@ -45,10 +45,6 @@ rule multiqc:
             library=SAMPLE_FASTQS.keys(),
             filter_name=list(config["bin"]["filters"].keys()),
         ),
-        hicpro_rsstat=expand(
-            f"{outdir}/Report/Pairs/{{library}}.hicpro.RSstat",
-            library=SAMPLE_FASTQS.keys(),
-        ),
         scaling=expand(
             f"{outdir}/Report/Pairs/{{library}}.nodups.scaling.tsv",
             library=SAMPLE_FASTQS.keys(),

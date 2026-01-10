@@ -1,15 +1,24 @@
 # 1. Setup & Configuration
 ##### load config and sample annotation sheets FIRST #####
-configfile: os.path.join("config", "config.yml")
+configfile: os.path.join("config", "test_config.yml")
 
 # Now include common.smk which uses the config
 include: "rules/common.smk"
 
 # 2. Domain Logic (in dependency order)
 include: "rules/qc.smk"          # Fastp, MultiQC
-include: "rules/align.smk"       # BWA, Bowtie2, Chromap
+include: "rules/align.smk"       # Index + legacy mapping
+
+# Optional: Stitch-and-Cut workflow (alternative mapping path)
+if config.get("map", {}).get("use_stitch_cut", False):
+    include: "rules/stitch_cut.smk"
+
 include: "rules/pairtools.smk"    # Pairtools
-include: "rules/hicpro_style.smk" # HiC-Pro style processing
+
+# HiC-Pro style processing only when NOT using stitch-and-cut
+if not config.get("map", {}).get("use_stitch_cut", False):
+    include: "rules/hicpro_style.smk"
+
 include: "rules/cooltools.smk"    # Cooler generation
 include: "rules/downstream.smk"   # Downstream analysis
 
@@ -79,14 +88,23 @@ library_report += expand(
     library=SAMPLE_FASTQS.keys(),
     filter_name=list(config["bin"]["filters"].keys()),
 )
-library_report += expand(
-    f"{outdir}/Report/Pairs/{{library}}.hicpro.RSstat",
-    library=SAMPLE_FASTQS.keys(),
-)
+# HiC-Pro RSstat only when not using stitch-and-cut
+if not config["map"].get("use_stitch_cut", False):
+    library_report += expand(
+        f"{outdir}/Report/Pairs/{{library}}.hicpro.RSstat",
+        library=SAMPLE_FASTQS.keys(),
+    )
 # Scaling reports (if enabled)
 if "scaling_pairs" in config and config["scaling_pairs"].get("do", True):
     library_report += expand(
         f"{outdir}/Report/Pairs/{{library}}.nodups.scaling.tsv",
+        library=SAMPLE_FASTQS.keys(),
+    )
+
+# Stitch-and-cut per-library summary reports (when enabled)
+if config["map"].get("use_stitch_cut", False):
+    library_report += expand(
+        f"{outdir}/Report/{{library}}.stitch_cut_summary.csv",
         library=SAMPLE_FASTQS.keys(),
     )
 
@@ -117,17 +135,14 @@ if "library_groups" in config["input"] and len(config["input"]["library_groups"]
             filter_name=list(config["bin"]["filters"].keys()),
         )
 multiqc = [f"{outdir}/Report/multiqc_report.html"]
-allvalidPair = []
-for sample in SAMPLE_FASTQS.keys():
-    allvalidPair.append(f"{outdir}/Important_processed/Pairs/{sample}.hicpro.validPairs")
 
-# Rule order for mapper-specific dependencies
-if config["map"]["mapper"] == "chromap":
-    ruleorder: map_chunks_chromap > parse_sort_chunks
-elif config["map"]["mapper"] == "bowtie2":
-    pass
-else:
-    ruleorder: parse_sort_chunks > map_chunks_chromap
+# HiC-Pro validPairs targets only when not using stitch-and-cut
+allvalidPair = []
+if not config["map"].get("use_stitch_cut", False):
+    for sample in SAMPLE_FASTQS.keys():
+        allvalidPair.append(f"{outdir}/Important_processed/Pairs/{sample}.hicpro.validPairs")
+
+
 
 # 4. Target Rule
 rule all:

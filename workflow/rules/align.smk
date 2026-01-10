@@ -1,8 +1,11 @@
-# Mapping rules for BWA, Bowtie2, and Chromap
+# Mapping rules for BWA-mem2 and Bowtie2
 
 # --- Index Rules ---
 
-if MAPPER in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
+# Optionally build BWA-MEM2 index locally when requested.
+# By default (build_bwa_index: false), we assume a shared, prebuilt index
+# and treat idx files as static inputs.
+if MAPPER == "bwa-mem2" and config["map"].get("build_bwa_index", False):
 
     rule bwaindex:
         input:
@@ -11,12 +14,16 @@ if MAPPER in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
             idx=idx,
         params:
             bwa=MAPPER,
-        threads: 1  # Only affects bwa-meme
+        conda:
+            "../envs/bwa-mem2.yml"
+        threads: 4
         log:
-            f"logs/bwa-memx_index/{assembly}.log",
-        cache: True
-        wrapper:
-            "v4.6.0/bio/bwa-memx/index"
+            f"logs/bwa-memx_index/{assembly}.log"
+        shell:
+            r"""
+            # Build BWA-MEM2 index for the reference genome
+            {params.bwa} index -t {threads} {input.genome} >{log} 2>&1
+            """
 
 elif MAPPER == "bowtie2":
 
@@ -34,24 +41,10 @@ elif MAPPER == "bowtie2":
         wrapper:
             "v3.9.0/bio/bowtie2/build"
 
-elif MAPPER == "chromap":
-
-    rule chromap_index:
-        input:
-            genome=genome_path,
-        output:
-            idx=multiext(genome_path, ".chromap.index"),
-        log:
-            f"logs/chromap_index/{assembly}.log",
-        conda:
-            "../envs/chromap.yml"
-        shell:
-            r"chromap -i -r {input.genome} -o {output.idx} >{log} 2>&1"
-
-
 # --- Mapping Rules ---
 
-if MAPPER in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
+# Only define legacy BWA mapping when stitch_cut is NOT used
+if MAPPER == "bwa-mem2" and not config["map"].get("use_stitch_cut", False):
 
     rule map_chunks_bwa:
         input:
@@ -80,41 +73,7 @@ if MAPPER in ["bwa-mem", "bwa-mem2", "bwa-meme"]:
             """
 
 
-if MAPPER == "bowtie2":
+# Only include Bowtie2 rescue workflow when stitch_cut is NOT used
+if MAPPER == "bowtie2" and not config["map"].get("use_stitch_cut", False):
     # Bowtie2 rescue mapping workflow is in bowtie2_rescue.smk
     include: "bowtie2_rescue.smk"
-
-
-if MAPPER == "chromap":
-
-    rule map_chunks_chromap:
-        input:
-            reads=get_input_reads,
-            reference=genome_path,
-            idx=multiext(genome_path, ".chromap.index"),
-        params:
-            extra=config["map"].get("mapping_options", ""),
-            r1_files=lambda wildcards, input: ','.join(input.reads[0]) if isinstance(input.reads[0], list) else input.reads[0],
-            r2_files=lambda wildcards, input: ','.join(input.reads[1]) if isinstance(input.reads[1], list) else input.reads[1],
-        threads: 8
-        output:
-            f"{outdir}/Important_processed/Pairs/{{sample}}.{assembly}.pairs.gz",
-        log:
-            "logs/chromap/{sample}.log",
-        benchmark:
-            "benchmarks/chromap/{sample}.tsv"
-        conda:
-            "../envs/chromap.yml"
-        shell:
-            # chromap doesn't output gzip files, so we need to pipe it to bgzip
-            # It doesn't work with low memory mode, so we can't use the hic preset
-            # Hence I provide all arguments manually except for --low-mem
-            # Use comma-separated FASTQ files
-            r"""
-            chromap -e 4 -q 1 --split-alignment --pairs -x {input.idx} -r {input.reference} \
-            -t {threads} {params.extra} \
-            -1 {params.r1_files} \
-            -2 {params.r2_files} \
-            -o /dev/stdout 2>{log} | \
-            bgzip > {output} \
-            """
