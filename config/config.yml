@@ -20,7 +20,7 @@ input:
   genome:
     assembly_name: 'hg38'
     fasta: "{database_dir}/hg38/hg38.fa"
-    bwa_index_wildcard_path: '{database_dir}/hg38/GRCh38.primary_assembly.genome.fa.gz'
+    bwa_index_wildcard_path: '/storage/zhangkaiLab/shared/genomes/GRCh38/bwa-mem2/GRCh38'
     bowtie_index_path: "{database_dir}/hg38/indices_for_Bowtie2/hg38"
     chrom_sizes_path: '{database_dir}/hg38/hg38.chromSizes'
   
@@ -30,7 +30,7 @@ input:
 ##### ALIGNMENT STRATEGY #####
 
 map:
-  mapper: 'hic_tailor' 
+  mapper: 'hic-tailor' 
   
   # No chunking - process each run as a single unit
   chunksize: 0
@@ -42,11 +42,6 @@ map:
   cutsite: 'GATCGATC'
   cutpattern: "^GATC"
   
-  # Bowtie2 rescue strategy options
-  rescue_options:
-    global_extra: '--very-sensitive -L 30 --score-min L,-0.6,-0.2 --end-to-end --reorder'
-    local_extra: '--very-sensitive -L 20 --score-min L,-0.6,-0.2 --end-to-end --reorder'
-    min_mapq: 10  # For mergeSAM.py
   
   # Adapter trimming with fastp
   trim_options: '--detect_adapter_for_pe -q 15'

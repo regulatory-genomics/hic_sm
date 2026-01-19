@@ -1,6 +1,6 @@
 # 1. Setup & Configuration
 ##### load config and sample annotation sheets FIRST #####
-configfile: os.path.join("config", "test_config.yml")
+configfile: os.path.join("config", "config.yml")
 
 # Now include common.smk which uses the config
 include: "rules/common.smk"

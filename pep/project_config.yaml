@@ -1,10 +1,10 @@
 pep_version: "2.0.0"
 
-project_name: 20251212_hic_test
+project_name: 20260119_hic
 
 description: "PEP definition for the Hi-C workflow."
 
-sample_table: ../config/20260102_hic_sample.csv
+sample_table: ../config/20260119_hic_sample.csv
 
 # Project-level path variables
 # These can be referenced in config using {placeholder} syntax
