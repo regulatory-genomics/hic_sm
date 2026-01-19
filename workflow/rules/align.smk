@@ -64,10 +64,10 @@ if MAPPER == "hic-tailor":
             r2_files=lambda wildcards, input: " ".join(input.r2) if isinstance(input.r2, list) else str(input.r2),
             fragment_bed=config["parse"]["fragment_file"],
             hic_tailor_bin=HIC_TAILOR_BIN,
-        threads: 8
+        threads: 16
         resources:
-            mem_mb=30000,
-            runtime=20
+            mem_mb=60000,
+            runtime=1500
         log:
             f"logs/hic_tailor/align/{{sample}}.log"
         benchmark:
@@ -82,8 +82,8 @@ if MAPPER == "hic-tailor":
 
             # Run hic-tailor with BAM output
             {params.hic_tailor_bin} \
-                --r1 {input.r1} \
-                --r2 {input.r2} \
+                --r1 {params.r1_files} \
+                --r2 {params.r2_files} \
                 --index {params.idx_prefix} \
                 --enzyme {params.enzyme} \
                 --output {output.pairs} \
