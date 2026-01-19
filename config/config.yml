@@ -130,7 +130,7 @@ bin:
 
 ##### OUTPUT DIRECTORIES #####
 
-output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20260102_hic_run'
+output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20260119_hic_run'
 
 ##### DOWNSTREAM ANALYSIS #####
 

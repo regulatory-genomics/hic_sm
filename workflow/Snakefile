@@ -7,7 +7,7 @@ include: "rules/common.smk"
 
 # 2. Domain Logic (in dependency order)
 include: "rules/qc.smk"          # Fastp, MultiQC
-include: "rules/align.smk"       # Index + legacy mapping
+include: "rules/align.smk" 
 
 include: "rules/pairtools.smk"    # Pairtools
 
@@ -63,8 +63,8 @@ for sample in SAMPLE_FASTQS.keys():
         library_report.append(f"{outdir}/Report/align/{sample}_R1.mapstat")
         library_report.append(f"{outdir}/Report/align/{sample}_R2.mapstat")
     elif config["map"]["mapper"] == "hic-tailor":
-        library_report.append(f"{outdir}/Report/HicTailor/Align/{sample}.flagstat")
-        library_report.append(f"{outdir}/Report/HicTailor/Align/{sample}.log")
+        library_report.append(f"{outdir}/Report/HicTailor/Align/{sample}_hic_tailor.flagstat")
+        library_report.append(f"{outdir}/Report/HicTailor/Align/{sample}_hic_tailor.json")
 # Pairs statistics (dedup stats linked to Report/pairtools)
 library_report += expand(
     f"{outdir}/Report/pairtools/{{library}}.dedup.stats",
