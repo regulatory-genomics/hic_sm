@@ -131,14 +131,8 @@ if config["dedup"].get("save_by_tile_dups", False):
 
 rule merge_dedup:
     input:
-        # Primary per-library pairs; switch based on mapper and stitch_cut settings
-        pairs=lambda wildcards: (
-            f"{outdir}/Important_processed/Pairs/{wildcards.library}.stitchcut.pairs.gz"
-            if config.get("map", {}).get("use_stitch_cut", False)
-            else (
-                f"{outdir}/Important_processed/Pairs/{wildcards.library}.pairs.gz"
-            )
-        ),
+        # Primary per-library pairs
+        pairs=lambda wildcards: f"{outdir}/Important_processed/Pairs/{wildcards.library}.pairs.gz",
     params:
         dedup_options=get_dedup_options,
         max_mismatch_bp=config["dedup"]["max_mismatch_bp"],

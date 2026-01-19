@@ -9,14 +9,10 @@ include: "rules/common.smk"
 include: "rules/qc.smk"          # Fastp, MultiQC
 include: "rules/align.smk"       # Index + legacy mapping
 
-# Optional: Stitch-and-Cut workflow (alternative mapping path)
-if config.get("map", {}).get("use_stitch_cut", False):
-    include: "rules/stitch_cut.smk"
-
 include: "rules/pairtools.smk"    # Pairtools
 
-# HiC-Pro style processing only when NOT using stitch-and-cut AND NOT using hic-tailor
-if not config["map"].get("use_stitch_cut", False) and config["map"].get("mapper") != "hic-tailor":
+# HiC-Pro style processing only when NOT using hic-tailor
+if config["map"].get("mapper") != "hic-tailor":
     include: "rules/hicpro_style.smk"
 
 include: "rules/cooltools.smk"    # Cooler generation
@@ -91,8 +87,8 @@ library_report += expand(
     library=SAMPLE_FASTQS.keys(),
     filter_name=list(config["bin"]["filters"].keys()),
 )
-# HiC-Pro RSstat only when not using stitch-and-cut AND NOT using hic-tailor
-if not config["map"].get("use_stitch_cut", False) and config["map"].get("mapper") != "hic-tailor":
+# HiC-Pro RSstat only when NOT using hic-tailor
+if config["map"].get("mapper") != "hic-tailor":
     library_report += expand(
         f"{outdir}/Report/Pairs/{{library}}.hicpro.RSstat",
         library=SAMPLE_FASTQS.keys(),
@@ -101,13 +97,6 @@ if not config["map"].get("use_stitch_cut", False) and config["map"].get("mapper"
 if "scaling_pairs" in config and config["scaling_pairs"].get("do", True):
     library_report += expand(
         f"{outdir}/Report/Pairs/{{library}}.nodups.scaling.tsv",
-        library=SAMPLE_FASTQS.keys(),
-    )
-
-# Stitch-and-cut per-library summary reports (when enabled)
-if config["map"].get("use_stitch_cut", False):
-    library_report += expand(
-        f"{outdir}/Report/{{library}}.stitch_cut_summary.csv",
         library=SAMPLE_FASTQS.keys(),
     )
 
@@ -139,9 +128,9 @@ if "library_groups" in config["input"] and len(config["input"]["library_groups"]
         )
 multiqc = [f"{outdir}/Report/multiqc_report.html"]
 
-# HiC-Pro validPairs targets only when not using stitch-and-cut AND NOT using hic-tailor
+# HiC-Pro validPairs targets only when NOT using hic-tailor
 allvalidPair = []
-if not config["map"].get("use_stitch_cut", False) and config["map"].get("mapper") != "hic-tailor":
+if config["map"].get("mapper") != "hic-tailor":
     for sample in SAMPLE_FASTQS.keys():
         allvalidPair.append(f"{outdir}/Important_processed/Pairs/{sample}.hicpro.validPairs")
 

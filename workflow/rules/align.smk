@@ -105,8 +105,8 @@ if MAPPER == "hic-tailor":
             fi
             """
 
-# Only define legacy BWA mapping when stitch_cut is NOT used
-if MAPPER == "bwa-mem2" and not config["map"].get("use_stitch_cut", False):
+# Legacy BWA mapping
+if MAPPER == "bwa-mem2":
 
     rule map_chunks_bwa:
         input:
@@ -135,7 +135,6 @@ if MAPPER == "bwa-mem2" and not config["map"].get("use_stitch_cut", False):
             """
 
 
-# Only include Bowtie2 rescue workflow when stitch_cut is NOT used
-if MAPPER == "bowtie2" and not config["map"].get("use_stitch_cut", False):
-    # Bowtie2 rescue mapping workflow is in bowtie2_rescue.smk
+# Bowtie2 rescue mapping workflow is in bowtie2_rescue.smk
+if MAPPER == "bowtie2":
     include: "bowtie2_rescue.smk"
