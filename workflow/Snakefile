@@ -15,8 +15,8 @@ if config.get("map", {}).get("use_stitch_cut", False):
 
 include: "rules/pairtools.smk"    # Pairtools
 
-# HiC-Pro style processing only when NOT using stitch-and-cut
-if not config.get("map", {}).get("use_stitch_cut", False):
+# HiC-Pro style processing only when NOT using stitch-and-cut AND NOT using hic-tailor
+if not config["map"].get("use_stitch_cut", False) and config["map"].get("mapper") != "hic-tailor":
     include: "rules/hicpro_style.smk"
 
 include: "rules/cooltools.smk"    # Cooler generation
@@ -66,6 +66,9 @@ for sample in SAMPLE_FASTQS.keys():
         library_report.append(f"{outdir}/Report/align/{sample}.pairstat")
         library_report.append(f"{outdir}/Report/align/{sample}_R1.mapstat")
         library_report.append(f"{outdir}/Report/align/{sample}_R2.mapstat")
+    elif config["map"]["mapper"] == "hic-tailor":
+        library_report.append(f"{outdir}/Report/HicTailor/Align/{sample}.flagstat")
+        library_report.append(f"{outdir}/Report/HicTailor/Align/{sample}.log")
 # Pairs statistics (dedup stats linked to Report/pairtools)
 library_report += expand(
     f"{outdir}/Report/pairtools/{{library}}.dedup.stats",
@@ -88,8 +91,8 @@ library_report += expand(
     library=SAMPLE_FASTQS.keys(),
     filter_name=list(config["bin"]["filters"].keys()),
 )
-# HiC-Pro RSstat only when not using stitch-and-cut
-if not config["map"].get("use_stitch_cut", False):
+# HiC-Pro RSstat only when not using stitch-and-cut AND NOT using hic-tailor
+if not config["map"].get("use_stitch_cut", False) and config["map"].get("mapper") != "hic-tailor":
     library_report += expand(
         f"{outdir}/Report/Pairs/{{library}}.hicpro.RSstat",
         library=SAMPLE_FASTQS.keys(),
@@ -136,9 +139,9 @@ if "library_groups" in config["input"] and len(config["input"]["library_groups"]
         )
 multiqc = [f"{outdir}/Report/multiqc_report.html"]
 
-# HiC-Pro validPairs targets only when not using stitch-and-cut
+# HiC-Pro validPairs targets only when not using stitch-and-cut AND NOT using hic-tailor
 allvalidPair = []
-if not config["map"].get("use_stitch_cut", False):
+if not config["map"].get("use_stitch_cut", False) and config["map"].get("mapper") != "hic-tailor":
     for sample in SAMPLE_FASTQS.keys():
         allvalidPair.append(f"{outdir}/Important_processed/Pairs/{sample}.hicpro.validPairs")
 

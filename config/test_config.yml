@@ -30,7 +30,7 @@ input:
 ##### ALIGNMENT STRATEGY #####
 
 map:
-  mapper: 'bwa-mem2'  # Options:  'bwa-mem2', 'bowtie2'
+  mapper: 'hic-tailor' 
   build_bwa_index: false
   
   # Mapper-specific options
@@ -50,13 +50,6 @@ map:
   trim_options: '--detect_adapter_for_pe -q 15'
   
   use_custom_split: True
-  use_stitch_cut: true     # <<< turn on stitch_cut.smk
-  stitch_cut:
-    min_overlap: 10        # FLASH2 params (optional, defaults already exist)
-    max_overlap: 150
-    min_ratio: 0.5         # sam2pairs params (optional)
-    min_mapq: 10
-
 ##### PARSING & PAIR GENERATION #####
 
 parse:

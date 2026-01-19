@@ -1,42 +1,61 @@
 
 
-rule parse_sort_chunks:
-    input:
-        bam=f"{outdir}/Important_processed/Bam/{{sample}}.bam",
-        chromsizes=chromsizes_path,
-    threads: 4
-    params:
-        # keep_bams_command=f"| tee >(samtools view -bS > {outdir}/Important_processed/Bam/{{sample}}.{assembly}.bam)"
-        # if config["parse"]["keep_unparsed_bams"]
-        # else "",
-        dropsam_flag="" if config["parse"].get("make_pairsam", False) else "--drop-sam",
-        dropreadid_flag=(
-            "--drop-readid" if config["parse"].get("drop_readid", False) else ""
-        ),
-        dropseq_flag="--drop-seq" if config["parse"].get("drop_seq", True) else "",
-        parsing_options=config["parse"].get("parsing_options", ""),
-    conda:
-        "../envs/pairtools_cooler.yml"
-    output:
-        f"{outdir}/Important_processed/Pairs/{{sample}}.pairs.gz",
-    benchmark:
-        "benchmarks/parse_sort_chunks/{sample}.tsv"
-    log:
-        "logs/parse_sort_chunks/{sample}.log",
-    shell:
-        r"""
-        pairtools parse {params.dropsam_flag} {params.dropreadid_flag} {params.dropseq_flag} \
-        {params.parsing_options} \
-        -c {input.chromsizes} {input.bam} \
-        | pairtools sort --nproc {threads} -o {output} \
-        >{log[0]} 2>&1
-        """
+# Only define parse_sort_chunks when NOT using hic-tailor (hic-tailor outputs pairs directly)
+if MAPPER != "hic-tailor":
+    rule parse_sort_chunks:
+        input:
+            bam=f"{outdir}/Important_processed/Bam/{{sample}}.bam",
+            chromsizes=chromsizes_path,
+        threads: 4
+        params:
+            # keep_bams_command=f"| tee >(samtools view -bS > {outdir}/Important_processed/Bam/{{sample}}.{assembly}.bam)"
+            # if config["parse"]["keep_unparsed_bams"]
+            # else "",
+            dropsam_flag="" if config["parse"].get("make_pairsam", False) else "--drop-sam",
+            dropreadid_flag=(
+                "--drop-readid" if config["parse"].get("drop_readid", False) else ""
+            ),
+            dropseq_flag="--drop-seq" if config["parse"].get("drop_seq", True) else "",
+            parsing_options=config["parse"].get("parsing_options", ""),
+        conda:
+            "../envs/pairtools_cooler.yml"
+        output:
+            f"{outdir}/Important_processed/Pairs/{{sample}}.pairs.gz",
+        benchmark:
+            "benchmarks/parse_sort_chunks/{sample}.tsv"
+        log:
+            "logs/parse_sort_chunks/{sample}.log",
+        shell:
+            r"""
+            pairtools parse {params.dropsam_flag} {params.dropreadid_flag} {params.dropseq_flag} \
+            {params.parsing_options} \
+            -c {input.chromsizes} {input.bam} \
+            | pairtools sort --nproc {threads} -o {output} \
+            >{log[0]} 2>&1
+            """
 
-
-
-# Since there's only one chunk per sample (no chunking), return single path
-def get_pair_chunks(wildcards):
-    return [f"{outdir}/Important_processed/Pairs/{wildcards.sample}.pairs.gz"]
+if MAPPER == "hic-tailor":
+    rule parse_sort_chunks_hic_tailor:
+        input:
+            pairs=f"{outdir}/Important_processed/Pairs/{{sample}}_hic_tailor.pairs.gz",
+            chromsizes=chromsizes_path,
+        threads: 4
+        conda:
+            "../envs/pairtools_cooler.yml"
+        output:
+            f"{outdir}/Important_processed/Pairs/{{sample}}.pairs.gz",
+        benchmark:
+            "benchmarks/parse_sort_chunks_hic_tailor/{sample}.tsv",
+        log:
+            "logs/parse_sort_chunks_hic_tailor/{sample}.log",
+        shell:
+            r"""
+            # hic-tailor may output unsorted pairs; sort + BGZIP-compress for downstream cooler/pairix
+            # Use a temp file to avoid overwriting input during sorting
+            pairtools sort --nproc {threads} {input.pairs} 2>>{log[0]} \
+              | bgzip -@ {threads} -c > {output}.tmp
+            mv {output}.tmp {output}
+            """
 
 
 if config["parse"]["make_pairsam"]:
@@ -112,11 +131,13 @@ if config["dedup"].get("save_by_tile_dups", False):
 
 rule merge_dedup:
     input:
-        # Primary per-library pairs; switch to stitchcut output when enabled
+        # Primary per-library pairs; switch based on mapper and stitch_cut settings
         pairs=lambda wildcards: (
             f"{outdir}/Important_processed/Pairs/{wildcards.library}.stitchcut.pairs.gz"
             if config.get("map", {}).get("use_stitch_cut", False)
-            else f"{outdir}/Important_processed/Pairs/{wildcards.library}.pairs.gz"
+            else (
+                f"{outdir}/Important_processed/Pairs/{wildcards.library}.pairs.gz"
+            )
         ),
     params:
         dedup_options=get_dedup_options,

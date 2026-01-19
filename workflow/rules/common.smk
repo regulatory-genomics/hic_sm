@@ -151,10 +151,10 @@ chromsizes_path = config["input"]["genome"]["chrom_sizes_path"]
 # Define index targets based on mapper
 MAPPER = config["map"]["mapper"]
 
-# Only allow bwa-mem2 or bowtie2
-if MAPPER not in ["bwa-mem2", "bowtie2"]:
+# Only allow bwa-mem2, bowtie2, or hic_tailor
+if MAPPER not in ["bwa-mem2", "bowtie2", "hic-tailor"]:
     raise ValueError(
-        f"config['map']['mapper'] must be 'bwa-mem2' or 'bowtie2', not '{MAPPER}'"
+        f"config['map']['mapper'] must be 'bwa-mem2', 'bowtie2', or 'hic-tailor', not '{MAPPER}'"
     )
 
 if MAPPER == "bwa-mem2":
@@ -175,6 +175,16 @@ elif MAPPER == "bowtie2":
         ".4.bt2",
         ".rev.1.bt2",
         ".rev.2.bt2",
+    )
+elif MAPPER == "hic-tailor":
+    # hic-tailor uses BWA-MEM2 index
+    idx = multiext(
+        bwa_index_path,
+        ".0123",
+        ".amb",
+        ".ann",
+        ".bwt.2bit.64",
+        ".pac",
     )
 else:  # bwa-meme
     idx = multiext(

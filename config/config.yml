@@ -30,7 +30,7 @@ input:
 ##### ALIGNMENT STRATEGY #####
 
 map:
-  mapper: 'bowtie2'  # Options: 'bwa-mem', 'bwa-mem2', 'bwa-meme', 'chromap', 'bowtie2'
+  mapper: 'hic_tailor' 
   
   # No chunking - process each run as a single unit
   chunksize: 0
