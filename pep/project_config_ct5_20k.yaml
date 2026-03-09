@@ -1,0 +1,13 @@
+pep_version: "2.0.0"
+
+project_name: ct5_20k_hic
+
+description: "PEP definition for CT5 20k Hi-C workflow test."
+
+sample_table: ../config/ct5_20k_sample.csv
+
+paths:
+  data_dir: "/home/gilberthan/disk1/projects/omic_sm/data/hic_subsets/CT5_20k"
+  process_dir: "/home/gilberthan/disk1/projects/omic_sm/test_runs"
+  database_dir: "/home/gilberthan/disk1/database/genome"
+  shared_genome_dir: "/home/gilberthan/disk1/database/genome"

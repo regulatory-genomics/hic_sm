@@ -71,6 +71,7 @@ if MAPPER == "hic-tailor":
             dedup_method=lambda wildcards: config["map"].get("hic_tailor_dedup_method", "max"),
             dedup_cache_backend=lambda wildcards: config["map"].get("hic_tailor_dedup_cache_backend", "memory"),
             dedup_disk_path=lambda wildcards: config["map"].get("hic_tailor_dedup_disk_path", ""),
+            enable_cut_mode=lambda wildcards: SAMPLE_METADATA.get(wildcards.sample, {}).get('enable_cut_mode', True),
         threads: 16
         resources:
             mem_mb=60000,
@@ -97,12 +98,17 @@ if MAPPER == "hic-tailor":
                 EXTRA_EXACT_DEDUP_ARGS="--enable-exact-dedup"
             fi
 
+            EXTRA_CUT_MODE_ARGS="--enable-cut-mode true"
+            if [ "{params.enable_cut_mode}" = "False" ] || [ "{params.enable_cut_mode}" = "false" ]; then
+                EXTRA_CUT_MODE_ARGS="--enable-cut-mode false"
+            fi
+
             {params.hic_tailor_bin} \
                 -1 {input.r1} \
                 -2 {input.r2} \
                 --index {params.idx_prefix} \
                 --enzyme '{params.enzyme}' \
-                --enable-cut-mode false \
+                $EXTRA_CUT_MODE_ARGS \
                 --output {output.parquet} \
                 --pairs-output {output.pairs} \
                 --bam-output {output.bam} \
