@@ -136,7 +136,22 @@ if config["map"].get("mapper") != "hic-tailor":
 
 
 
-# 4. Target Rule
+# 4. Target Rules
+rule hic_tailor_core_test:
+    input:
+        expand(
+            f"{outdir}/Important_processed/Pairs/{{library}}.nodups.pairs.gz",
+            library=SAMPLE_FASTQS.keys(),
+        ),
+        expand(
+            f"{outdir}/Report/HicTailor/Align/{{library}}_hic_tailor.json",
+            library=SAMPLE_FASTQS.keys(),
+        ),
+        expand(
+            f"{outdir}/Important_processed/Pairs/{{library}}.dedup.stats",
+            library=SAMPLE_FASTQS.keys(),
+        )
+
 rule all:
     input:
         # QC & Stats

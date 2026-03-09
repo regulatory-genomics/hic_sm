@@ -25,6 +25,9 @@ properties:
   skip_ligation:
     type: boolean
     description: "whether to skip ligation-specific handling (true/false)"
+  enable_cut_mode:
+    type: boolean
+    description: "whether to enable hic-tailor cut mode for this sample (true/false)"
   organism:
     type: string
     description: "species"

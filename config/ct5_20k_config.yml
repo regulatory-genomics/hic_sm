@@ -1,74 +1,46 @@
 ##### PROJECT IO #####
 
 project:
-  name: hic
+  name: hic_ct5_20k
   genome: hg38
-  # PEP configuration file
-  pep_config: "pep/project_config.yaml"
+  pep_config: "pep/project_config_ct5_20k.yaml"
   read_type: paired
-
-##### WORKFLOW RESOURCES #####
 
 resources:
   mem_mb: 16000
   threads: 8
 
-##### GENOME REFERENCES (HG38) #####
-# Paths to static resources (uses placeholders from PEP)
-
 input:
   genome:
     assembly_name: 'hg38'
-    fasta: "{database_dir}/hg38/hg38.fa"
-    bwa_index_wildcard_path: '/storage/zhangkaiLab/shared/genomes/GRCh38/bwa-mem2/GRCh38'
+    fasta: "/home/gilberthan/disk1/database/genome/hg38/hg38.fa.gz"
+    bwa_index_wildcard_path: '/home/gilberthan/disk1/database/genome/hg38/hg38.fa.gz'
     bowtie_index_path: "{database_dir}/hg38/indices_for_Bowtie2/hg38"
-    chrom_sizes_path: '{database_dir}/hg38/hg38.chromSizes'
-  
-  # Automatically create library_groups containing all libraries
+    chrom_sizes_path: '/home/gilberthan/disk1/database/genome/chrom_size/hg38.chrom.sizes'
   all_group: True
-
-##### ALIGNMENT STRATEGY #####
 
 map:
   mapper: 'hic-tailor'
+  build_bwa_index: false
   hic_tailor_bin: '/home/gilberthan/disk1/projects/prehic/target/release/hic-tailor'
   hic_tailor_enable_exact_dedup: true
   hic_tailor_dedup_radius: 3
   hic_tailor_dedup_method: 'max'
   hic_tailor_dedup_cache_backend: 'memory'
   hic_tailor_dedup_disk_path: ''
-  
-  # No chunking - process each run as a single unit
-  chunksize: 0
-  
-  # Mapper-specific options
   mapping_options: ''
-  
-  # Ligation sites (MboI) - can be overridden per-sample in PEP table
-  cutsite: 'GATCGATC'
-  cutpattern: "^GATC"
-  
-  # Adapter trimming with fastp
-  trim_options: '--detect_adapter_for_pe -q 15'
-  
+  cutsite: '^GATC'
+  cutpattern: '^GATC'
+  trim_options: ''
   use_custom_split: True
 
-##### PARSING & PAIR GENERATION #####
-
 parse:
-  # Fragment file for restriction enzyme (MboI)
-  fragment_file: "{database_dir}/hg38/mboi_fragment.bed"
-  
-  # Pairsam generation options
+  fragment_file: "/home/gilberthan/disk1/projects/prehic/data/mboi_fragment.bed"
   make_pairsam: False
   drop_seq: True
   drop_readid: False
   keep_unparsed_bams: True
-  
-  # Pairtools parse options
   parsing_options: '--add-columns mapq --walks-policy 5unique'
-  
-  # Phasing configuration (optional)
   phase:
     do_phase: False
     tag_mode: XA
@@ -76,30 +48,20 @@ parse:
       - _cast
       - _129
 
-##### DEDUPLICATION #####
-
 dedup:
   max_mismatch_bp: 0
   save_by_tile_dups: True
   dedup_options: ""
 
-##### SCALING / P(s) CALCULATION #####
-
 scaling_pairs:
   do_scaling: True
   min_distance: 10
-  max_distance: False  # Use longest chromosome
+  max_distance: False
   n_dist_bins_decade: 10
   scaling_options: ''
 
-##### BINNING & COOLER GENERATION #####
-
 bin:
-  # Multi-resolution cooler resolutions
   resolutions:
-    - 10000000
-    - 5000000
-    - 2500000
     - 1000000
     - 500000
     - 250000
@@ -110,8 +72,6 @@ bin:
     - 5000
     - 2000
     - 1000
-  
-  # Resolutions for Mustache loop calling
   resolution_for_mustache:
     - 1000000
     - 500000
@@ -122,29 +82,16 @@ bin:
     - 10000
     - 5000
     - 2000
-  
-  # Balance coolers
   balance: True
-  
-  # Filtering options
   filters:
     mapq_30: '(mapq1>=30) and (mapq2>=30)'
-  
-  # Convert to .hic format
   make_hic: False
 
-##### OUTPUT DIRECTORIES #####
-
-output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20260119_hic_run'
-
-##### DOWNSTREAM ANALYSIS #####
+output_base_dir: '/home/gilberthan/disk1/projects/omic_sm/test_runs/CT5_20k_hic'
 
 mustache:
   executable_path: "workflow/scripts/mustache.py"
   thresholds:
-    10000000: "0.1"
-    5000000: "0.1"
-    2500000: "0.1"
     1000000: "0.1"
     500000: "0.1"
     250000: "0.1"
@@ -156,9 +103,6 @@ mustache:
     2000: "0.2"
     1000: "0.2"
   sparse_params:
-    10000000: "0.88"
-    5000000: "0.88"
-    2500000: "0.88"
     1000000: "0.88"
     500000: "0.88"
     250000: "0.88"
