@@ -4,7 +4,7 @@ project:
   name: hic
   genome: hg38
   # PEP configuration file
-  pep_config: "../pep/project_config.yaml"
+  pep_config: "pep/project_config.yaml"
   read_type: paired
 
 ##### WORKFLOW RESOURCES #####
@@ -30,7 +30,13 @@ input:
 ##### ALIGNMENT STRATEGY #####
 
 map:
-  mapper: 'hic-tailor' 
+  mapper: 'hic-tailor'
+  hic_tailor_bin: '/home/gilberthan/disk1/projects/prehic/target/release/hic-tailor'
+  hic_tailor_enable_exact_dedup: true
+  hic_tailor_dedup_radius: 3
+  hic_tailor_dedup_method: 'max'
+  hic_tailor_dedup_cache_backend: 'memory'
+  hic_tailor_dedup_disk_path: ''
   
   # No chunking - process each run as a single unit
   chunksize: 0
@@ -41,7 +47,6 @@ map:
   # Ligation sites (MboI) - can be overridden per-sample in PEP table
   cutsite: 'GATCGATC'
   cutpattern: "^GATC"
-  
   
   # Adapter trimming with fastp
   trim_options: '--detect_adapter_for_pe -q 15'
@@ -134,7 +139,6 @@ output_base_dir: '/storage/zhangkaiLab/hanlitian/macrophage/process/20260119_hic
 
 ##### DOWNSTREAM ANALYSIS #####
 
-# Mustache loop detection configuration
 mustache:
   executable_path: "workflow/scripts/mustache.py"
   thresholds:
@@ -165,4 +169,3 @@ mustache:
     5000: "0.7"
     2000: "0.7"
     1000: "0.7"
-

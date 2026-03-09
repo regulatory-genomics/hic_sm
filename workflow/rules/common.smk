@@ -15,8 +15,14 @@ min_version("8.20.1")
 
 module_name = "hic_pipeline"
 
-# Determine PEP config path (defaults to pep/project_config.yaml)
-pep_config_value = config.get("pep_config", os.path.join("pep", "project_config.yaml"))
+# Determine PEP config path.
+# Prefer the structured location config['project']['pep_config'] used by this workflow,
+# and fall back to the legacy top-level config['pep_config'] if present.
+pep_config_value = (
+    config.get("project", {}).get("pep_config")
+    or config.get("pep_config")
+    or os.path.join("pep", "project_config.yaml")
+)
 
 
 # Resolve PEP path; if relative, treat it as relative to the repo root (one level above workflow/)
