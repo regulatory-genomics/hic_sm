@@ -67,7 +67,7 @@ if MAPPER == "hic-tailor":
         threads: 16
         resources:
             mem_mb=60000,
-            runtime=1500
+            runtime=1200
         log:
             f"logs/hic_tailor/align/{{sample}}.log"
         benchmark:
