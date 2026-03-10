@@ -15,8 +15,14 @@ min_version("8.20.1")
 
 module_name = "hic_pipeline"
 
-# Determine PEP config path (defaults to pep/project_config.yaml)
-pep_config_value = config.get("pep_config", os.path.join("pep", "project_config.yaml"))
+# Determine PEP config path.
+# Prefer the structured location config['project']['pep_config'] used by this workflow,
+# and fall back to the legacy top-level config['pep_config'] if present.
+pep_config_value = (
+    config.get("project", {}).get("pep_config")
+    or config.get("pep_config")
+    or os.path.join("pep", "project_config.yaml")
+)
 
 
 # Resolve PEP path; if relative, treat it as relative to the repo root (one level above workflow/)
@@ -106,6 +112,17 @@ if 'skip_ligation' in annot.columns:
     )
     # Default to False for any unrecognized/NA values
     annot['skip_ligation'] = annot['skip_ligation'].fillna(False).astype(bool)
+
+# Normalize enable_cut_mode to boolean if present
+if 'enable_cut_mode' in annot.columns:
+    annot['enable_cut_mode'] = (
+        annot['enable_cut_mode']
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map({'true': True, 'false': False})
+    )
+    annot['enable_cut_mode'] = annot['enable_cut_mode'].fillna(True).astype(bool)
 
 # Create a unique identifier for each run: sample_name_run (store run as string for downstream paths)
 annot['sample_name'] = annot['sample_name'].astype(str)
@@ -229,6 +246,8 @@ for sample_run_id, row in annot.iterrows():
             SAMPLE_METADATA[sample_name]['ligation_site'] = str(row['ligation_site'])
         if 'skip_ligation' in row and pd.notna(row['skip_ligation']):
             SAMPLE_METADATA[sample_name]['skip_ligation'] = bool(row['skip_ligation'])
+        if 'enable_cut_mode' in row and pd.notna(row['enable_cut_mode']):
+            SAMPLE_METADATA[sample_name]['enable_cut_mode'] = bool(row['enable_cut_mode'])
 
 # Keep LIBRARY_RUN_FASTQS for backward compatibility with library_group logic
 # (library = sample_name in current implementation)

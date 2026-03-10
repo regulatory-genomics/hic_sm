@@ -45,25 +45,33 @@ elif MAPPER == "bowtie2":
 
 if MAPPER == "hic-tailor":
     import os
-    HIC_TAILOR_BIN = os.path.join(workflow.basedir, "scripts", "hic-tailor")
-    
+    HIC_TAILOR_BIN = config["map"].get(
+        "hic_tailor_bin",
+        os.path.join(workflow.basedir, "scripts", "hic-tailor")
+    )
+
     rule align_hic_tailor:
         input:
-            r1=lambda wildcards: get_trimmed_runs_for_sample(wildcards)[0],
-            r2=lambda wildcards: get_trimmed_runs_for_sample(wildcards)[1],
+            r1=lambda wildcards: get_sample_fastqs(wildcards)[0],
+            r2=lambda wildcards: get_sample_fastqs(wildcards)[1],
             idx=idx,
         output:
-            pairs=f"{outdir}/Important_processed/Pairs/{{sample}}_hic_tailor.pairs.gz",
+            pairs=f"{outdir}/Important_processed/Pairs/{{sample}}.nodups.pairs.gz",
+            parquet=f"{outdir}/Important_processed/Pairs/{{sample}}.hic_tailor.parquet",
             bam=f"{outdir}/Important_processed/Bam/{{sample}}_hic_tailor.bam",
             flagstat=f"{outdir}/Report/HicTailor/Align/{{sample}}_hic_tailor.flagstat",
             align_log=f"{outdir}/Report/HicTailor/Align/{{sample}}_hic_tailor.json",
         params:
             idx_prefix=lambda wildcards, input: str(input.idx[0]).rsplit(".", 1)[0],
             enzyme=get_cutsite,
-            r1_files=lambda wildcards, input: " ".join(input.r1) if isinstance(input.r1, list) else str(input.r1),
-            r2_files=lambda wildcards, input: " ".join(input.r2) if isinstance(input.r2, list) else str(input.r2),
-            fragment_bed=config["parse"]["fragment_file"],
+            fragments=config["parse"]["fragment_file"],
             hic_tailor_bin=HIC_TAILOR_BIN,
+            enable_exact_dedup=lambda wildcards: config["map"].get("hic_tailor_enable_exact_dedup", True),
+            dedup_radius=lambda wildcards: config["map"].get("hic_tailor_dedup_radius", 3),
+            dedup_method=lambda wildcards: config["map"].get("hic_tailor_dedup_method", "max"),
+            dedup_cache_backend=lambda wildcards: config["map"].get("hic_tailor_dedup_cache_backend", "memory"),
+            dedup_disk_path=lambda wildcards: config["map"].get("hic_tailor_dedup_disk_path", ""),
+            enable_cut_mode=lambda wildcards: SAMPLE_METADATA.get(wildcards.sample, {}).get('enable_cut_mode', True),
         threads: 16
         resources:
             mem_mb=60000,
@@ -80,27 +88,48 @@ if MAPPER == "hic-tailor":
             mkdir -p {outdir}/Important_processed/Bam
             mkdir -p {outdir}/Report/HicTailor/Align
 
-            # Run hic-tailor with BAM output
+            EXTRA_DEDUP_DISK_ARGS=""
+            if [ -n "{params.dedup_disk_path}" ]; then
+                EXTRA_DEDUP_DISK_ARGS="--dedup-disk-path {params.dedup_disk_path}"
+            fi
+
+            EXTRA_EXACT_DEDUP_ARGS=""
+            if [ "{params.enable_exact_dedup}" = "True" ] || [ "{params.enable_exact_dedup}" = "true" ]; then
+                EXTRA_EXACT_DEDUP_ARGS="--enable-exact-dedup"
+            fi
+
+            EXTRA_CUT_MODE_ARGS="--enable-cut-mode true"
+            if [ "{params.enable_cut_mode}" = "False" ] || [ "{params.enable_cut_mode}" = "false" ]; then
+                EXTRA_CUT_MODE_ARGS="--enable-cut-mode false"
+            fi
+
             {params.hic_tailor_bin} \
-                --r1 {params.r1_files} \
-                --r2 {params.r2_files} \
+                -1 {input.r1} \
+                -2 {input.r2} \
                 --index {params.idx_prefix} \
-                --enzyme {params.enzyme} \
-                --output {output.pairs} \
+                --enzyme '{params.enzyme}' \
+                $EXTRA_CUT_MODE_ARGS \
+                --output {output.parquet} \
+                --pairs-output {output.pairs} \
                 --bam-output {output.bam} \
                 --threads {threads} \
                 --min-frag-len 20 \
-                --fragment-bed {params.fragment_bed} \
+                --fragments {params.fragments} \
+                --enable-dedup \
+                --dedup-radius {params.dedup_radius} \
+                --dedup-method {params.dedup_method} \
+                --dedup-cache-backend {params.dedup_cache_backend} \
+                $EXTRA_EXACT_DEDUP_ARGS \
+                $EXTRA_DEDUP_DISK_ARGS \
                 >{log} 2>&1
 
-            # Generate flagstat
             samtools flagstat {output.bam} > {output.flagstat}
-            
-            # Copy hic-tailor log file if it exists
-            if [ -f {outdir}/Important_processed/Pairs/{wildcards.sample}_hic_tailor.json ]; then
-                cp {outdir}/Important_processed/Pairs/{wildcards.sample}_hic_tailor.json {output.align_log}
+
+            if [ -f {outdir}/Important_processed/Pairs/{wildcards.sample}.hic_tailor.json ]; then
+                cp {outdir}/Important_processed/Pairs/{wildcards.sample}.hic_tailor.json {output.align_log}
+            elif [ -f {outdir}/Important_processed/Pairs/{wildcards.sample}.json ]; then
+                cp {outdir}/Important_processed/Pairs/{wildcards.sample}.json {output.align_log}
             else
-                # Create empty log file if hic-tailor didn't create one
                 touch {output.align_log}
             fi
             """

@@ -1,6 +1,4 @@
-
-
-# Only define parse_sort_chunks when NOT using hic-tailor (hic-tailor outputs pairs directly)
+# Only define parse_sort_chunks when NOT using hic-tailor (hic-tailor outputs final nodups pairs directly)
 if MAPPER != "hic-tailor":
     rule parse_sort_chunks:
         input:
@@ -8,9 +6,6 @@ if MAPPER != "hic-tailor":
             chromsizes=chromsizes_path,
         threads: 4
         params:
-            # keep_bams_command=f"| tee >(samtools view -bS > {outdir}/Important_processed/Bam/{{sample}}.{assembly}.bam)"
-            # if config["parse"]["keep_unparsed_bams"]
-            # else "",
             dropsam_flag="" if config["parse"].get("make_pairsam", False) else "--drop-sam",
             dropreadid_flag=(
                 "--drop-readid" if config["parse"].get("drop_readid", False) else ""
@@ -32,29 +27,6 @@ if MAPPER != "hic-tailor":
             -c {input.chromsizes} {input.bam} \
             | pairtools sort --nproc {threads} -o {output} \
             >{log[0]} 2>&1
-            """
-
-if MAPPER == "hic-tailor":
-    rule parse_sort_chunks_hic_tailor:
-        input:
-            pairs=f"{outdir}/Important_processed/Pairs/{{sample}}_hic_tailor.pairs.gz",
-            chromsizes=chromsizes_path,
-        threads: 4
-        conda:
-            "../envs/pairtools_cooler.yml"
-        output:
-            f"{outdir}/Important_processed/Pairs/{{sample}}.pairs.gz",
-        benchmark:
-            "benchmarks/parse_sort_chunks_hic_tailor/{sample}.tsv",
-        log:
-            "logs/parse_sort_chunks_hic_tailor/{sample}.log",
-        shell:
-            r"""
-            # hic-tailor may output unsorted pairs; sort + BGZIP-compress for downstream cooler/pairix
-            # Use a temp file to avoid overwriting input during sorting
-            pairtools sort --nproc {threads} {input.pairs} 2>>{log[0]} \
-              | bgzip -@ {threads} -c > {output}.tmp
-            mv {output}.tmp {output}
             """
 
 
@@ -129,29 +101,52 @@ if config["dedup"].get("save_by_tile_dups", False):
     merge_output += [f"{outdir}/Important_processed/Pairs/{{library}}.by_tile_dups.txt"]
 
 
-rule merge_dedup:
-    input:
-        # Primary per-library pairs
-        pairs=lambda wildcards: f"{outdir}/Important_processed/Pairs/{wildcards.library}.pairs.gz",
-    params:
-        dedup_options=get_dedup_options,
-        max_mismatch_bp=config["dedup"]["max_mismatch_bp"],
-        input_command=get_input_command,
-        phase_command=get_phase_command,
-    threads: 4
-    conda:
-        "../envs/pairtools_cooler.yml"
-    output:
-        merge_output,
-    log:
-        "logs/merge_dedup/{library}.log",
-    benchmark:
-        "benchmarks/merge_dedup/{library}.tsv"
-    resources:
-        mem_mb= 20000,
-        runtime= 120,
-    shell:
-        r"{params.input_command}" + r"{params.phase_command}" + dedup_command + " >{log[0]} 2>&1"
+if MAPPER != "hic-tailor":
+    rule merge_dedup:
+        input:
+            pairs=lambda wildcards: f"{outdir}/Important_processed/Pairs/{wildcards.library}.pairs.gz",
+        params:
+            dedup_options=get_dedup_options,
+            max_mismatch_bp=config["dedup"]["max_mismatch_bp"],
+            input_command=get_input_command,
+            phase_command=get_phase_command,
+        threads: 4
+        conda:
+            "../envs/pairtools_cooler.yml"
+        output:
+            merge_output,
+        log:
+            "logs/merge_dedup/{library}.log",
+        benchmark:
+            "benchmarks/merge_dedup/{library}.tsv"
+        resources:
+            mem_mb= 20000,
+            runtime= 120,
+        shell:
+            r"{params.input_command}" + r"{params.phase_command}" + dedup_command + " >{log[0]} 2>&1"
+else:
+    rule hictailor_finalize_pairs:
+        input:
+            pairs=f"{outdir}/Important_processed/Pairs/{{library}}.nodups.pairs.gz",
+            json=f"{outdir}/Report/HicTailor/Align/{{library}}_hic_tailor.json",
+        output:
+            px2=f"{outdir}/Important_processed/Pairs/{{library}}.nodups.pairs.gz.px2",
+            dedup_stats=f"{outdir}/Important_processed/Pairs/{{library}}.dedup.stats",
+        threads: 2
+        conda:
+            "../envs/pairtools_cooler.yml"
+        log:
+            "logs/hictailor_finalize_pairs/{library}.log"
+        benchmark:
+            "benchmarks/hictailor_finalize_pairs/{library}.tsv"
+        shell:
+            r"""
+            pairix {input.pairs} >{log[0]} 2>&1
+            python workflow/scripts/hictailor_json_to_dedup_stats.py \
+                -i {input.json} \
+                -o {output.dedup_stats} \
+                >>{log[0]} 2>&1
+            """
 
 
 rule link_dedup_stats:
@@ -164,4 +159,3 @@ rule link_dedup_stats:
         mkdir -p $(dirname {output.report_stats})
         ln -sf {input.dedup_stats} {output.report_stats}
         """
-

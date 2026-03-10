@@ -1,0 +1,2 @@
+sample_name,run,R1,R2,ligation_site,skip_ligation,enable_cut_mode
+CT5_20k,1,/home/gilberthan/disk1/projects/omic_sm/data/hic_subsets/CT5_20k/CT5_20k_R1.fastq.gz,/home/gilberthan/disk1/projects/omic_sm/data/hic_subsets/CT5_20k/CT5_20k_R2.fastq.gz,^GATC,false,false
