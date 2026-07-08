@@ -466,7 +466,7 @@ def read_cooler(f, distance_in_bp, chr1, chr2, cooler_balance):
         val = np.array(result[2])
     else:
 
-        result = clr.matrix(balance=True, sparse=True).fetch(chr1, chr2)
+        result = clr.matrix(balance=True if not cooler_balance else cooler_balance, sparse=True).fetch(chr1, chr2)
         result = sparse.triu(result)
         np.nan_to_num(result, copy=False, nan=0, posinf=0, neginf=0)
         x = result.row
@@ -566,7 +566,7 @@ def read_mcooler(f, distance_in_bp, chr1, chr2, res, cooler_balance):
         y = np.array(result[1])
         val = np.array(result[2])
     else:
-        result = clr.matrix(balance=True, sparse=True).fetch(chr1, chr2)
+        result = clr.matrix(balance=True if not cooler_balance else cooler_balance, sparse=True).fetch(chr1, chr2)
         result = sparse.triu(result)
         np.nan_to_num(result, copy=False, nan=0, posinf=0, neginf=0)
         x = result.row
